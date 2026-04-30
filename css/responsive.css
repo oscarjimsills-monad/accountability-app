@@ -1,0 +1,559 @@
+/**
+ * Responsive Styles
+ * Mobile and tablet optimizations
+ */
+
+/* Tablet (768px and below) */
+@media (max-width: 768px) {
+    /* Layout */
+    .main-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas:
+            "header"
+            "content";
+    }
+
+    /* Header */
+    .app-header {
+        padding: 1rem;
+    }
+
+    .header-content {
+        gap: 1rem;
+    }
+
+    .app-title {
+        font-size: 1.25rem;
+    }
+
+    .header-info {
+        gap: 1rem;
+    }
+
+    .current-date {
+        display: none;
+    }
+
+    .menu-toggle {
+        display: flex;
+    }
+
+    /* Sidebar */
+    .sidebar {
+        position: fixed;
+        top: 57px;
+        left: -250px;
+        width: 250px;
+        height: calc(100vh - 57px);
+        z-index: 999;
+        transition: left 0.3s ease;
+        box-shadow: var(--shadow-lg);
+    }
+
+    .sidebar.active {
+        left: 0;
+    }
+
+    /* Main Content */
+    .main-content {
+        padding: 1rem;
+    }
+
+    /* View Header */
+    .view-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .view-header h1 {
+        font-size: 1.5rem;
+    }
+
+    /* Stats Grid */
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .stats-bar {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* Form Row */
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+
+    /* Modal */
+    .modal-content {
+        max-width: 100%;
+        margin: 0;
+        border-radius: 0;
+        max-height: 100vh;
+    }
+
+    .modal-header {
+        padding: 1rem;
+    }
+
+    .modal-body {
+        padding: 1rem;
+    }
+
+    /* Prompt Container */
+    .prompt-container {
+        padding: 1rem;
+    }
+
+    .prompt-screen {
+        padding: 1.5rem;
+    }
+
+    .prompt-screen h2 {
+        font-size: 1.5rem;
+    }
+
+    /* Mood Options */
+    .mood-options {
+        gap: 0.5rem;
+    }
+
+    .mood-btn {
+        min-width: 60px;
+        padding: 0.75rem;
+    }
+
+    .mood-emoji {
+        font-size: 1.5rem;
+    }
+
+    /* Commitment Box */
+    .commitment-value {
+        font-size: 1.5rem;
+    }
+
+    /* Stats Summary */
+    .stats-summary {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    .stats-quick {
+        flex-direction: column;
+        gap: 1rem;
+    }
+
+    /* Dashboard */
+    .dashboard-header h1 {
+        font-size: 1.5rem;
+    }
+
+    .today-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .commitment-summary {
+        grid-template-columns: 1fr;
+    }
+
+    /* Task Card */
+    .task-footer {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.75rem;
+    }
+
+    /* Habit Stats */
+    .habit-stats {
+        gap: 1rem;
+    }
+
+    /* Goal Card */
+    .goal-milestones {
+        flex-direction: column;
+        gap: 0.5rem;
+    }
+
+    /* Timer Widget */
+    .start-timer {
+        flex-direction: column;
+    }
+
+    .timer-display {
+        font-size: 2.5rem;
+    }
+
+    /* Settings */
+    .settings-actions {
+        flex-direction: column;
+    }
+
+    .settings-actions .btn {
+        width: 100%;
+    }
+
+    /* Comparison Display */
+    .comparison-display {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+
+    .comparison-arrow {
+        transform: rotate(90deg);
+    }
+
+    /* Celebration */
+    .celebration-icon {
+        font-size: 3rem;
+    }
+
+    .celebration-title {
+        font-size: 1.5rem;
+    }
+
+    /* Buttons */
+    .btn-large {
+        padding: 0.875rem 1.5rem;
+        font-size: 1rem;
+    }
+
+    /* Prompt Navigation */
+    .prompt-navigation {
+        flex-wrap: wrap;
+    }
+
+    .prompt-navigation .btn {
+        min-width: 100px;
+        font-size: 0.85rem;
+    }
+}
+
+/* Mobile (480px and below) */
+@media (max-width: 480px) {
+    /* Header */
+    .app-title {
+        font-size: 1.1rem;
+    }
+
+    .streak-indicator {
+        font-size: 1rem;
+    }
+
+    /* Main Content */
+    .main-content {
+        padding: 0.75rem;
+    }
+
+    /* View Header */
+    .view-header h1 {
+        font-size: 1.25rem;
+    }
+
+    /* Cards */
+    .card,
+    .task-card,
+    .habit-card,
+    .goal-card,
+    .time-entry-card {
+        padding: 0.875rem;
+    }
+
+    /* Prompt Screen */
+    .prompt-screen {
+        padding: 1.25rem;
+    }
+
+    .prompt-screen h2 {
+        font-size: 1.25rem;
+    }
+
+    .prompt-screen .subtitle {
+        font-size: 0.9rem;
+    }
+
+    /* Mood Options */
+    .mood-btn {
+        min-width: 50px;
+        padding: 0.5rem;
+    }
+
+    .mood-emoji {
+        font-size: 1.25rem;
+    }
+
+    .mood-label {
+        font-size: 0.75rem;
+    }
+
+    /* Commitment Value */
+    .commitment-value {
+        font-size: 1.25rem;
+    }
+
+    /* Stats Card */
+    .stat-card {
+        padding: 1rem;
+    }
+
+    .stat-card .stat-icon {
+        font-size: 1.5rem;
+    }
+
+    .stat-card .stat-value {
+        font-size: 1.5rem;
+    }
+
+    /* Timer Display */
+    .timer-display {
+        font-size: 2rem;
+    }
+
+    .timer-activity {
+        font-size: 1.1rem;
+    }
+
+    /* Dashboard */
+    .dashboard-section h2 {
+        font-size: 1.25rem;
+    }
+
+    /* Accountability Messages */
+    .accountability-message {
+        padding: 0.875rem 1rem;
+        font-size: 0.9rem;
+    }
+
+    .accountability-message.message-emphasis {
+        font-size: 1rem;
+    }
+
+    /* Streak Display */
+    .streak-number {
+        font-size: 3rem;
+    }
+
+    .streak-label {
+        font-size: 1.1rem;
+    }
+
+    /* Score Circle */
+    .score-circle {
+        width: 120px;
+        height: 120px;
+    }
+
+    .score-circle::before {
+        width: 90px;
+        height: 90px;
+    }
+
+    .score-value {
+        font-size: 2rem;
+    }
+
+    /* Harsh Feedback */
+    .harsh-feedback {
+        padding: 1.5rem;
+    }
+
+    .harsh-feedback-title {
+        font-size: 1.25rem;
+    }
+
+    .harsh-feedback-message {
+        font-size: 1rem;
+    }
+
+    /* Celebration */
+    .celebration {
+        padding: 1.5rem;
+    }
+
+    .celebration-icon {
+        font-size: 2.5rem;
+    }
+
+    .celebration-title {
+        font-size: 1.25rem;
+    }
+
+    .celebration-message {
+        font-size: 1rem;
+    }
+
+    /* Form Elements */
+    .input-text,
+    .input-textarea,
+    .input-select,
+    .input-date,
+    .input-time,
+    .input-datetime {
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    /* Buttons */
+    .btn {
+        padding: 0.5rem 1rem;
+        font-size: 0.85rem;
+    }
+
+    .btn-large {
+        padding: 0.75rem 1.25rem;
+        font-size: 0.95rem;
+    }
+
+    /* Modal Actions */
+    .modal-actions {
+        flex-direction: column-reverse;
+    }
+
+    .modal-actions .btn {
+        width: 100%;
+    }
+
+    /* Toast */
+    .toast-container {
+        left: 10px;
+        right: 10px;
+        top: 10px;
+    }
+
+    .toast {
+        min-width: auto;
+    }
+
+    /* Today Card */
+    .today-card-header {
+        padding: 0.875rem 1rem;
+    }
+
+    .today-card-body {
+        padding: 1rem;
+    }
+
+    .today-card-footer {
+        padding: 0.875rem 1rem;
+    }
+
+    /* Commitment Item */
+    .commitment-item {
+        flex-direction: column;
+        text-align: center;
+        gap: 0.5rem;
+    }
+
+    .commitment-icon {
+        font-size: 1.5rem;
+    }
+
+    .commitment-details .commitment-value {
+        font-size: 1.1rem;
+    }
+
+    /* Settings Section */
+    .settings-section {
+        padding: 1rem;
+    }
+
+    /* Sidebar Footer */
+    .sidebar-footer {
+        padding: 1rem;
+    }
+
+    .sidebar-footer .btn {
+        font-size: 0.85rem;
+        padding: 0.5rem 0.75rem;
+    }
+}
+
+/* Landscape Mobile */
+@media (max-width: 768px) and (orientation: landscape) {
+    .prompt-container {
+        padding: 1rem;
+    }
+
+    .prompt-screen {
+        max-height: 80vh;
+        overflow-y: auto;
+    }
+
+    .stats-summary,
+    .stats-quick {
+        flex-direction: row;
+        flex-wrap: wrap;
+    }
+}
+
+/* Print Styles */
+@media print {
+    .sidebar,
+    .app-header,
+    .menu-toggle,
+    .btn,
+    .modal-container,
+    .toast-container,
+    .prompt-navigation {
+        display: none !important;
+    }
+
+    .main-layout {
+        grid-template-columns: 1fr;
+        grid-template-areas: "content";
+    }
+
+    .main-content {
+        padding: 0;
+        max-width: 100%;
+    }
+
+    body {
+        background: white;
+    }
+
+    .card,
+    .task-card,
+    .habit-card,
+    .goal-card {
+        box-shadow: none;
+        border: 1px solid var(--border-color);
+        page-break-inside: avoid;
+    }
+}
+
+/* High Contrast Mode */
+@media (prefers-contrast: high) {
+    :root {
+        --border-color: #000;
+        --shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+    }
+
+    .btn {
+        border: 2px solid currentColor;
+    }
+
+    .task-card,
+    .habit-card,
+    .goal-card,
+    .time-entry-card {
+        border: 2px solid var(--border-color);
+    }
+}
+
+/* Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+    }
+}
+
+/* Dark Mode Support (Future Enhancement) */
+@media (prefers-color-scheme: dark) {
+    /* Dark mode styles can be added here in the future */
+}
+
+/* Made with Bob */

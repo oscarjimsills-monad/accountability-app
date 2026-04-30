@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Accountability app with prompt-based check-ins and harsh but fair accountability">
+    <title>Accountability App</title>
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/prompts.css">
+    <link rel="stylesheet" href="css/accountability.css">
+    <link rel="stylesheet" href="css/responsive.css">
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div id="loading-screen" class="loading-screen">
+        <div class="loading-spinner"></div>
+        <p>Loading your accountability...</p>
+    </div>
+
+    <!-- Main App Container -->
+    <div id="app" class="app-container" style="display: none;">
+        
+        <!-- Prompt Flow Container (for check-ins) -->
+        <div id="prompt-container" class="prompt-container" style="display: none;">
+            <div class="prompt-progress">
+                <div class="progress-bar">
+                    <div id="prompt-progress-fill" class="progress-fill"></div>
+                </div>
+                <span id="prompt-step-indicator" class="step-indicator">Step 1 of 7</span>
+            </div>
+            
+            <div id="prompt-content" class="prompt-content">
+                <!-- Prompt screens will be dynamically inserted here -->
+            </div>
+            
+            <div class="prompt-navigation">
+                <button id="prompt-back-btn" class="btn btn-secondary" style="display: none;">
+                    ← Back
+                </button>
+                <button id="prompt-skip-btn" class="btn btn-text" style="display: none;">
+                    Skip
+                </button>
+                <button id="prompt-next-btn" class="btn btn-primary">
+                    Continue →
+                </button>
+            </div>
+        </div>
+
+        <!-- Main App Layout (after check-in) -->
+        <div id="main-app" class="main-layout" style="display: none;">
+            
+            <!-- Header -->
+            <header class="app-header">
+                <div class="header-content">
+                    <h1 class="app-title">Accountability</h1>
+                    <div class="header-info">
+                        <span id="current-date" class="current-date"></span>
+                        <span id="streak-indicator" class="streak-indicator">🔥 0</span>
+                    </div>
+                </div>
+                <button id="menu-toggle" class="menu-toggle" aria-label="Toggle menu">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+            </header>
+
+            <!-- Sidebar Navigation -->
+            <nav id="sidebar" class="sidebar">
+                <ul class="nav-menu">
+                    <li><a href="#" data-view="dashboard" class="nav-link active">
+                        <span class="nav-icon">📊</span>
+                        <span class="nav-text">Dashboard</span>
+                    </a></li>
+                    <li><a href="#" data-view="tasks" class="nav-link">
+                        <span class="nav-icon">✓</span>
+                        <span class="nav-text">Tasks</span>
+                    </a></li>
+                    <li><a href="#" data-view="habits" class="nav-link">
+                        <span class="nav-icon">🔄</span>
+                        <span class="nav-text">Habits</span>
+                    </a></li>
+                    <li><a href="#" data-view="goals" class="nav-link">
+                        <span class="nav-icon">🎯</span>
+                        <span class="nav-text">Goals</span>
+                    </a></li>
+                    <li><a href="#" data-view="time" class="nav-link">
+                        <span class="nav-icon">⏱️</span>
+                        <span class="nav-text">Time Tracker</span>
+                    </a></li>
+                    <li><a href="#" data-view="screentime" class="nav-link">
+                        <span class="nav-icon">📱</span>
+                        <span class="nav-text">Screentime</span>
+                    </a></li>
+                    <li><a href="#" data-view="reflections" class="nav-link">
+                        <span class="nav-icon">💭</span>
+                        <span class="nav-text">Reflections</span>
+                    </a></li>
+                    <li><a href="#" data-view="history" class="nav-link">
+                        <span class="nav-icon">📅</span>
+                        <span class="nav-text">History</span>
+                    </a></li>
+                    <li class="nav-divider"></li>
+                    <li><a href="#" data-view="settings" class="nav-link">
+                        <span class="nav-icon">⚙️</span>
+                        <span class="nav-text">Settings</span>
+                    </a></li>
+                </ul>
+                
+                <div class="sidebar-footer">
+                    <button id="update-checkin-btn" class="btn btn-secondary btn-sm">
+                        Update Check-in
+                    </button>
+                    <button id="export-data-btn" class="btn btn-text btn-sm">
+                        Export Data
+                    </button>
+                </div>
+            </nav>
+
+            <!-- Main Content Area -->
+            <main id="main-content" class="main-content">
+                <!-- Dynamic content will be loaded here -->
+            </main>
+
+        </div>
+
+    </div>
+
+    <!-- Toast Notifications -->
+    <div id="toast-container" class="toast-container"></div>
+
+    <!-- Modal Container -->
+    <div id="modal-container" class="modal-container"></div>
+
+    <!-- JavaScript -->
+    <script src="js/utils.js"></script>
+    <script src="js/storage.js"></script>
+    <script src="js/commitmentTracker.js"></script>
+    <script src="js/accountability.js"></script>
+    <script src="js/promptFlow.js"></script>
+    <script src="js/tasks.js"></script>
+    <script src="js/habits.js"></script>
+    <script src="js/goals.js"></script>
+    <script src="js/timeTracker.js"></script>
+    <script src="js/screentimeTracker.js"></script>
+    <script src="js/reflections.js"></script>
+    <script src="js/dashboard.js"></script>
+    <script src="js/dataManager.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

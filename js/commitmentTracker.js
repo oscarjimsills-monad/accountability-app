@@ -52,8 +52,9 @@ const CommitmentTracker = {
             
         } else if (type === 'bedtime') {
             const commitment = commitments.bedtime.commitment;
-            const minutesLate = Utils.timeDifferenceMinutes(commitment, actual);
-            const met = minutesLate <= 30; // 30 min grace for bedtime
+            // If no bedtime commitment was ever set, just record the actual time without scoring
+            const minutesLate = commitment ? Utils.timeDifferenceMinutes(commitment, actual) : 0;
+            const met = commitment ? minutesLate <= 30 : null; // 30 min grace for bedtime
             
             commitments.bedtime.actual = actual;
             commitments.bedtime.met = met;

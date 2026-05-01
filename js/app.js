@@ -159,6 +159,9 @@ const App = {
             case 'dashboard':
                 Dashboard.render();
                 break;
+            case 'obligations':
+                this.renderObligationsView();
+                break;
             case 'tasks':
                 this.renderTasksView();
                 break;
@@ -212,6 +215,94 @@ const App = {
         
         // Render dashboard
         Dashboard.render();
+    },
+
+    /**
+     * Render obligations view
+     */
+    renderObligationsView() {
+        console.log('renderObligationsView called');
+        const container = document.getElementById('main-content');
+        if (!container) {
+            console.error('main-content container not found');
+            return;
+        }
+        const today = Utils.getTodayString();
+        console.log('Today:', today);
+        const commitment = StorageManager.getCommitments(today);
+        console.log('Commitment:', commitment);
+        const obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
+        console.log('Obligations:', obligations);
+        
+        const completedCount = obligations.filter(o => o.completed).length;
+        const totalCount = obligations.length;
+        
+        let html = '<div class="view-header">';
+        html += '<h1>📋 Today\'s Obligations</h1>';
+        html += '<div class="header-stats">';
+        html += '<span class="completion-badge ' + (completedCount === totalCount && totalCount > 0 ? 'complete' : '') + '">';
+        html += completedCount + '/' + totalCount + ' Complete';
+        html += '</span></div></div>';
+        
+        if (obligations.length === 0) {
+            html += '<div class="empty-state">';
+            html += '<div class="empty-icon">📋</div>';
+            html += '<h3>No obligations for today</h3>';
+            html += '<p>Set obligations during your evening check-in to see them here tomorrow.</p>';
+            html += '</div>';
+        } else {
+            html += '<div class="obligations-list">';
+            obligations.forEach((obligation, index) => {
+                html += '<div class="obligation-card ' + (obligation.completed ? 'completed' : '') + '">';
+                html += '<div class="obligation-checkbox">';
+                html += '<input type="checkbox" id="obligation-' + index + '" ' + (obligation.completed ? 'checked' : '') + ' onchange="App.toggleObligation(' + index + ')">';
+                html += '<label for="obligation-' + index + '"></label>';
+                html += '</div>';
+                html += '<div class="obligation-content">';
+                html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
+                html += '<div class="obligation-time">';
+                html += '<span class="time-icon">⏰</span>';
+                html += '<span>' + Utils.formatTimeString(obligation.time) + '</span>';
+                html += '</div></div>';
+                if (obligation.completed) {
+                    html += '<div class="completion-badge">✓</div>';
+                }
+                html += '</div>';
+            });
+            html += '</div>';
+            
+            if (completedCount === totalCount && totalCount > 0) {
+                html += '<div class="success-message">';
+                html += '<h3>🎉 All obligations complete!</h3>';
+                html += '<p>Great job staying on top of your commitments today.</p>';
+                html += '</div>';
+            }
+        }
+        
+        container.innerHTML = html;
+    },
+
+    /**
+     * Toggle obligation completion
+     */
+    toggleObligation(index) {
+        const today = Utils.getTodayString();
+        const commitment = StorageManager.getCommitments(today);
+        
+        if (commitment && commitment.obligations && commitment.obligations[index]) {
+            commitment.obligations[index].completed = !commitment.obligations[index].completed;
+            StorageManager.saveCommitments(today, commitment);
+            
+            // Re-render the view
+            this.renderObligationsView();
+            
+            // Show feedback
+            if (commitment.obligations[index].completed) {
+                Utils.showSuccess('Obligation completed! 🎉');
+            } else {
+                Utils.showInfo('Obligation marked as incomplete');
+            }
+        }
     },
 
     /**

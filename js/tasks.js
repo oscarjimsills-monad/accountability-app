@@ -171,7 +171,7 @@ const TaskManager = {
      * Get today's tasks
      */
     getTodayTasks() {
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         return this.getTasks({ date: today, completed: false });
     },
 
@@ -179,7 +179,7 @@ const TaskManager = {
      * Get overdue tasks
      */
     getOverdueTasks() {
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         return this.tasks.filter(task => {
             if (task.completed || !task.dueDate) return false;
             return task.dueDate < today;

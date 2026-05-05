@@ -76,6 +76,14 @@ const Utils = {
     },
 
     /**
+     * Get current log date string (respects 5am day boundary)
+     */
+    getLogDateString() {
+        const hour = new Date().getHours();
+        return hour < 5 ? this.getYesterdayString() : this.getTodayString();
+    },
+    
+    /**
      * Check if date is today
      */
     isToday(date) {

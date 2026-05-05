@@ -148,12 +148,17 @@ const PromptFlow = {
      * Get morning flow steps
      */
     getMorningSteps() {
-        return [
+        const lastEveningCheckin = StorageManager.getLastEveningCheckin();
+        const yesterday = Utils.getYesterdayString();
+        const didEveningCheckin = lastEveningCheckin === yesterday || lastEveningCheckin === Utils.getTodayString();
+        const allSteps = [
             {
                 name: 'wake-up-check',
                 skippable: false,
                 render: (data) => {
-                    const today = CommitmentTracker.getTodayCommitment();
+                    const hour = new Date().getHours();
+                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const currentTime = new Date();
                     const currentTimeStr = `${String(currentTime.getHours()).padStart(2, '0')}:${String(currentTime.getMinutes()).padStart(2, '0')}`;
@@ -193,7 +198,9 @@ const PromptFlow = {
                     `;
                 },
                 setupListeners: (data) => {
-                    const today = CommitmentTracker.getTodayCommitment();
+                    const hour = new Date().getHours();
+                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const actualInput = document.getElementById('actual-wakeup');
                     const excuseSection = document.getElementById('excuse-section');
@@ -220,7 +227,9 @@ const PromptFlow = {
                         return false;
                     }
                     
-                    const today = CommitmentTracker.getTodayCommitment();
+                    const hour = new Date().getHours();
+                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const minutesLate = Utils.timeDifferenceMinutes(commitment, actual);
                     const gracePeriod = StorageManager.getSettings().gracePeriodMinutes || 15;
@@ -369,6 +378,7 @@ const PromptFlow = {
                 }
             }
         ];
+        return didEveningCheckin ? allSteps.filter(s => s.name !== 'bedtime-check') : allSteps;
     },
 
     /**
@@ -907,18 +917,21 @@ const PromptFlow = {
      * Complete evening flow
      */
     completeEveningFlow() {
-        const today = Utils.getTodayString();
+        // If it's past midnight but before 5am, the evening belongs to yesterday
+        const hour = new Date().getHours();
+        const eveningDate = (hour < 5) ? Utils.getYesterdayString() : Utils.getTodayString();
+
         const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + 1);
+        tomorrow.setDate(tomorrow.getDate() + (hour < 5 ? 0 : 1));
         const tomorrowStr = Utils.getDateString(tomorrow);
-        
+
         // Save commitments
-        CommitmentTracker.setCommitment('wakeup', this.flowData.wakeupCommitment, tomorrowStr); // Tomorrow's wake-up
-        CommitmentTracker.setCommitment('bedtime', this.flowData.bedtimeCommitment, today); // Tonight's bedtime
-        CommitmentTracker.setCommitment('obligations', this.flowData.obligations || [], tomorrowStr); // Tomorrow's obligations
-        CommitmentTracker.setCommitment('priorities', this.flowData.priorities || [], tomorrowStr); // Tomorrow's priorities
-        
-        // Save today's screentime if provided
+        CommitmentTracker.setCommitment('wakeup', this.flowData.wakeupCommitment, tomorrowStr);
+        CommitmentTracker.setCommitment('bedtime', this.flowData.bedtimeCommitment, eveningDate);
+        CommitmentTracker.setCommitment('obligations', this.flowData.obligations || [], tomorrowStr);
+        CommitmentTracker.setCommitment('priorities', this.flowData.priorities || [], tomorrowStr);
+
+        // Save screentime to the evening's date, not necessarily today
         if (this.flowData.screentimeApps && this.flowData.screentimeApps.length > 0) {
             const totalMinutes = this.flowData.screentimeApps.reduce((sum, app) => sum + app.minutes, 0);
             const hours = Math.floor(totalMinutes / 60);
@@ -926,18 +939,16 @@ const PromptFlow = {
             const appsList = this.flowData.screentimeApps.map(app =>
                 `${app.name} (${Math.floor(app.minutes / 60)}h ${app.minutes % 60}m)`
             ).join(', ');
-            
-            ScreentimeTracker.addEntry(Utils.getTodayString(), hours, minutes, appsList);
+
+            ScreentimeTracker.addEntry(eveningDate, hours, minutes, appsList);
         }
-        
+
         // Mark evening check-in complete
         CommitmentTracker.completeEveningCheckin();
-        
-        // Show success and go to dashboard
+
         Utils.showSuccess('Evening check-in complete! Sleep well! 😴');
         this.goToDashboard();
     },
-
     /**
      * Show prompt container
      */

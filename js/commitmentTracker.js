@@ -142,36 +142,38 @@ const CommitmentTracker = {
         
         let currentStreak = 0;
         let longestStreak = 0;
-        let tempStreak = 0;
         let previousStreak = 0;
-        let foundBreak = false;
-        
+        let expectedDate = endDate;
+
         for (const date of dates) {
-            const commitment = allCommitments[date];
+            if (date > endDate) continue;
             
-            if (commitment.wakeup && commitment.wakeup.met !== null) {
-                if (commitment.wakeup.met) {
-                    if (!foundBreak) {
-                        currentStreak++;
-                    }
-                    tempStreak++;
-                    longestStreak = Math.max(longestStreak, tempStreak);
-                } else {
-                    if (!foundBreak && currentStreak > 0) {
-                        previousStreak = currentStreak;
-                        foundBreak = true;
-                    }
-                    if (tempStreak > 0) {
-                        longestStreak = Math.max(longestStreak, tempStreak);
-                        tempStreak = 0;
-                    }
+            // Gap in dates = missed day = streak broken
+            if (date !== expectedDate) {
+                if (currentStreak > 0) {
+                    previousStreak = currentStreak;
+                    longestStreak = Math.max(longestStreak, currentStreak);
                 }
+                break;
             }
-            
-            // Stop after checking enough history
-            if (date < endDate && foundBreak) break;
+
+            const commitment = allCommitments[date];
+
+            if (commitment.wakeup && commitment.wakeup.met === true) {
+                currentStreak++;
+                longestStreak = Math.max(longestStreak, currentStreak);
+            } else if (commitment.wakeup && commitment.wakeup.met === false) {
+                previousStreak = currentStreak;
+                longestStreak = Math.max(longestStreak, currentStreak);
+                break;
+            }
+
+            // Step expectedDate back one day
+            const d = new Date(expectedDate);
+            d.setDate(d.getDate() - 1);
+            expectedDate = Utils.getDateString(d);
         }
-        
+
         return {
             current: currentStreak,
             longest: longestStreak,
@@ -245,7 +247,8 @@ const CommitmentTracker = {
     needsMorningCheckin() {
         const lastCheckin = StorageManager.getLastCheckin();
         const today = Utils.getTodayString();
-        return lastCheckin !== today;
+        const hour = new Date().getHours();
+        return lastCheckin !== today && hour >= 5;
     },
 
     /**
@@ -256,8 +259,8 @@ const CommitmentTracker = {
         const today = Utils.getTodayString();
         const hour = new Date().getHours();
         
-        // Show evening check-in between 8pm and 2am
-        const isEveningTime = hour >= 20 || hour < 2;
+        // Show evening check-in between 8pm and 5am
+        const isEveningTime = hour >= 20 || hour < 5;
         
         return isEveningTime && lastEveningCheckin !== today;
     },

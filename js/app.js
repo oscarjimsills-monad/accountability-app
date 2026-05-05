@@ -227,7 +227,7 @@ const App = {
             console.error('main-content container not found');
             return;
         }
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         console.log('Today:', today);
         const commitment = StorageManager.getCommitments(today);
         console.log('Commitment:', commitment);
@@ -286,7 +286,7 @@ const App = {
      * Toggle obligation completion
      */
     toggleObligation(index) {
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(today);
         
         if (commitment && commitment.obligations && commitment.obligations[index]) {
@@ -872,7 +872,14 @@ const App = {
     renderHistoryView() {
         const container = document.getElementById('main-content');
         const allCommitments = StorageManager.getAllCommitments();
-        const dates = Object.keys(allCommitments).sort().reverse();
+        const existingDates = Object.keys(allCommitments).sort();
+        const firstDate = existingDates.length > 0 ? existingDates[0] : Utils.getTodayString();
+        const dates = [];
+        const [year, month, day] = firstDate.split('-').map(Number);
+        for (let d = new Date(year, month - 1, day); d <= new Date(); d.setDate(d.getDate() + 1)) {
+            dates.push(Utils.getDateString(d));
+        }
+        dates.reverse();
         
         container.innerHTML = `
             <div class="view-header">
@@ -884,8 +891,8 @@ const App = {
                 ${dates.length > 0 ? dates.map(date => {
                     const commitment = allCommitments[date];
                     const screentimeEntry = ScreentimeTracker.getEntry(date);
-                    const wakeupMet = commitment.wakeup?.met;
-                    const hasData = commitment.wakeup?.actual || screentimeEntry;
+                    const wakeupMet = commitment?.wakeup?.met;
+                    const hasData = commitment?.wakeup?.actual || screentimeEntry;
                     
                     return `
                         <div class="history-day-card ${hasData ? 'has-data' : 'no-data'}"
@@ -901,7 +908,7 @@ const App = {
                                 </div>
                             </div>
                             <div class="day-summary">
-                                ${commitment.wakeup?.actual ? `
+                                ${commitment?.wakeup?.actual ? `
                                     <div class="summary-item">
                                         <span class="summary-icon">⏰</span>
                                         <span class="summary-text">Woke at ${Utils.formatTimeString(commitment.wakeup.actual)}</span>
@@ -948,6 +955,9 @@ const App = {
                     ← Back to History
                 </button>
                 <h1>📅 ${formattedDate}</h1>
+                <button class="btn btn-secondary" onclick="App.showEditDayModal('${date}')">
+                    ✏️ Edit
+                </button>
             </div>
             
             <div class="day-detail">
@@ -1011,6 +1021,10 @@ const App = {
                                         <span class="entry-category">${entry.category}</span>
                                         <span class="entry-duration">${Math.floor(entry.duration / 60)}h ${entry.duration % 60}m</span>
                                     </div>
+                                    <div class="entry-actions">
+                                        <button class="btn-icon" onclick="App.showEditTimeEntryModal('${entry.id}', '${date}')" title="Edit">✏️</button>
+                                        <button class="btn-icon" onclick="App.deleteTimeEntry('${entry.id}', '${date}')" title="Delete">🗑️</button>
+                                    </div>
                                 </div>
                             `).join('')}
                         </div>
@@ -1034,7 +1048,30 @@ const App = {
                         </div>
                     ` : '';
                 })()}
-                
+
+                ${(() => {
+    const dist = App.getDayTimeDistribution(date);
+    return dist.hasData ? `
+        <div class="detail-section">
+            <h2>⏱️ Time Distribution</h2>
+            <div class="time-distribution-container">
+                <div class="pie-chart-container">
+                    ${Dashboard.renderPieChart(dist.data)}
+                </div>
+                <div class="time-legend">
+                    ${dist.data.map(item => `
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: ${item.color}"></span>
+                            <span class="legend-label">${item.category}</span>
+                            <span class="legend-value">${item.hours}h ${item.minutes}m</span>
+                            <span class="legend-percent">(${item.percentage}%)</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    ` : '';
+})()}
                 ${!commitment && !screentimeEntry && timeEntries.length === 0 && ReflectionManager.getReflectionsByDate(date).length === 0 ? `
                     <div class="empty-state">
                         <p>No data logged for this day</p>
@@ -1210,7 +1247,239 @@ const App = {
                 </button>
             </div>
         `;
+    },
+    
+/**
+ * Show edit modal for a historical day
+ */
+showEditDayModal(date) {
+    const commitment = StorageManager.getCommitments(date) || CommitmentTracker.createEmptyCommitment(date);
+    const screentimeEntry = ScreentimeTracker.getEntry(date);
+    const modal = document.getElementById('modal-container');
+
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="App.closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>✏️ Edit ${Utils.formatDate(new Date(date), 'long')}</h2>
+                    <button class="btn-close" onclick="App.closeModal()">✕</button>
+                </div>
+                <div class="modal-body">
+
+                    <div class="form-group">
+                        <label>Wake-up commitment</label>
+                        <input type="time" id="edit-wakeup-commitment" class="input-time"
+                               value="${commitment.wakeup?.commitment || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Actual wake-up</label>
+                        <input type="time" id="edit-wakeup-actual" class="input-time"
+                               value="${commitment.wakeup?.actual || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Bedtime commitment</label>
+                        <input type="time" id="edit-bedtime-commitment" class="input-time"
+                               value="${commitment.bedtime?.commitment || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Actual bedtime</label>
+                        <input type="time" id="edit-bedtime-actual" class="input-time"
+                               value="${commitment.bedtime?.actual || ''}">
+                    </div>
+                    <div class="form-group">
+                        <label>Screentime (hours)</label>
+                        <input type="number" id="edit-screentime-hours" class="input-number" min="0" max="24"
+                               value="${screentimeEntry ? Math.floor(screentimeEntry.totalMinutes / 60) : 0}">
+                    </div>
+                    <div class="form-group">
+                        <label>Screentime (minutes)</label>
+                        <input type="number" id="edit-screentime-minutes" class="input-number" min="0" max="59"
+                               value="${screentimeEntry ? screentimeEntry.totalMinutes % 60 : 0}">
+                    </div>
+
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="App.saveEditedDay('${date}')">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+},
+
+/**
+ * Save edits to a historical day
+ */
+saveEditedDay(date) {
+    const commitment = StorageManager.getCommitments(date) || CommitmentTracker.createEmptyCommitment(date);
+
+    const wakeupCommitment = document.getElementById('edit-wakeup-commitment').value;
+    const wakeupActual    = document.getElementById('edit-wakeup-actual').value;
+    const bedtimeCommitment = document.getElementById('edit-bedtime-commitment').value;
+    const bedtimeActual   = document.getElementById('edit-bedtime-actual').value;
+    const stHours   = parseInt(document.getElementById('edit-screentime-hours').value) || 0;
+    const stMinutes = parseInt(document.getElementById('edit-screentime-minutes').value) || 0;
+
+    // Update wake-up fields
+    commitment.wakeup.commitment = wakeupCommitment || commitment.wakeup.commitment;
+    commitment.wakeup.actual = wakeupActual || commitment.wakeup.actual;
+    if (wakeupActual && wakeupCommitment) {
+        const minutesLate = Utils.timeDifferenceMinutes(wakeupCommitment, wakeupActual);
+        const gracePeriod = StorageManager.getSettings().gracePeriodMinutes || 15;
+        commitment.wakeup.met = minutesLate <= gracePeriod;
+        commitment.wakeup.minutesLate = Math.max(0, minutesLate);
     }
+
+    // Update bedtime fields
+    commitment.bedtime.commitment = bedtimeCommitment || commitment.bedtime.commitment;
+    commitment.bedtime.actual = bedtimeActual || commitment.bedtime.actual;
+    if (bedtimeActual && bedtimeCommitment) {
+        const minutesLate = Utils.timeDifferenceMinutes(bedtimeCommitment, bedtimeActual);
+        commitment.bedtime.met = minutesLate <= 30;
+        commitment.bedtime.minutesLate = Math.max(0, minutesLate);
+    }
+
+    StorageManager.saveCommitments(date, commitment);
+
+    // Update screentime
+    if (stHours > 0 || stMinutes > 0) {
+        ScreentimeTracker.addEntry(date, stHours, stMinutes,
+            ScreentimeTracker.getEntry(date)?.notes || '');
+    }
+
+    this.closeModal();
+    Utils.showSuccess('Day updated!');
+    this.showDayDetail(date);
+},
+
+getDayTimeDistribution(date) {
+    const colors = [
+        '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444',
+        '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'
+    ];
+    let colorIndex = 0;
+    const data = [];
+    let totalMinutes = 0;
+
+    // Time tracked
+    TimeTracker.timeEntries.filter(e => Utils.getDateString(new Date(e.startTime)) === date).forEach(entry => {
+        const existing = data.find(d => d.name === entry.activity);
+        if (existing) {
+            existing.totalMinutes += entry.duration;
+        } else {
+            data.push({ name: entry.activity, totalMinutes: entry.duration, color: colors[colorIndex++ % colors.length] });
+        }
+        totalMinutes += entry.duration;
+    });
+
+    // Screentime
+    const screentimeEntry = ScreentimeTracker.getEntry(date);
+    if (screentimeEntry?.totalMinutes > 0) {
+        data.push({ name: 'Social Media & Games', totalMinutes: screentimeEntry.totalMinutes, color: '#ef4444' });
+        totalMinutes += screentimeEntry.totalMinutes;
+    }
+
+    // Sleep
+    const allCommitments = StorageManager.getAllCommitments();
+    const dayC = allCommitments[date];
+    const [year, month, day] = date.split('-').map(Number);
+    const prevDate = Utils.getDateString(new Date(year, month - 1, day - 1));
+    const prevC = allCommitments[prevDate];
+    if (dayC?.wakeup?.actual && prevC?.bedtime?.actual) {
+        const sleep = Dashboard.calculateSleepDuration(prevC.bedtime.actual, dayC.wakeup.actual);
+        if (sleep > 0) {
+            data.push({ name: 'Sleep', totalMinutes: sleep, color: '#6366f1' });
+            totalMinutes += sleep;
+        }
+    }
+
+    if (data.length === 0) return { hasData: false };
+
+    const formattedData = data.map(item => ({
+        category: item.name,
+        minutes: item.totalMinutes % 60,
+        hours: Math.floor(item.totalMinutes / 60),
+        totalMinutes: item.totalMinutes,
+        percentage: Math.round((item.totalMinutes / totalMinutes) * 100),
+        color: item.color
+    })).sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+    return { hasData: true, data: formattedData };
+},
+
+showEditTimeEntryModal(entryId, date) {
+    const entry = TimeTracker.timeEntries.find(e => e.id === entryId);
+    if (!entry) return;
+
+    const hours = Math.floor(entry.duration / 60);
+    const minutes = entry.duration % 60;
+    const modal = document.getElementById('modal-container');
+
+    modal.innerHTML = `
+        <div class="modal-overlay" onclick="App.closeModal()">
+            <div class="modal-content" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>✏️ Edit Time Entry</h2>
+                    <button class="btn-close" onclick="App.closeModal()">✕</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Activity</label>
+                        <input type="text" id="edit-entry-activity" class="input-text" value="${Utils.escapeHtml(entry.activity)}">
+                    </div>
+                    <div class="form-group">
+                        <label>Hours</label>
+                        <input type="number" id="edit-entry-hours" class="input-number" min="0" max="24" value="${hours}">
+                    </div>
+                    <div class="form-group">
+                        <label>Minutes</label>
+                        <input type="number" id="edit-entry-minutes" class="input-number" min="0" max="59" value="${minutes}">
+                    </div>
+                    <div class="modal-actions">
+                        <button class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+                        <button class="btn btn-primary" onclick="App.saveEditedTimeEntry('${entryId}', '${date}')">Save</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    `;
+    modal.style.display = 'flex';
+},
+
+saveEditedTimeEntry(entryId, date) {
+    const entry = TimeTracker.timeEntries.find(e => e.id === entryId);
+    if (!entry) return;
+
+    const activity = document.getElementById('edit-entry-activity').value.trim();
+    const hours = parseInt(document.getElementById('edit-entry-hours').value) || 0;
+    const minutes = parseInt(document.getElementById('edit-entry-minutes').value) || 0;
+
+    entry.activity = activity || entry.activity;
+    entry.duration = (hours * 60) + minutes;
+
+    TimeTracker.saveTimeEntries();
+    this.closeModal();
+    Utils.showSuccess('Entry updated!');
+    this.showDayDetail(date);
+},
+
+deleteTimeEntry(entryId, date) {
+    if (!confirm('Delete this time entry?')) return;
+    TimeTracker.timeEntries = TimeTracker.timeEntries.filter(e => e.id !== entryId);
+    TimeTracker.saveTimeEntries();
+    Utils.showSuccess('Entry deleted!');
+    this.showDayDetail(date);
+},
+
+/**
+ * Close modal
+ */
+closeModal() {
+    const modal = document.getElementById('modal-container');
+    modal.style.display = 'none';
+    modal.innerHTML = '';
+},
 };
 
 // Initialize app when DOM is ready

@@ -83,6 +83,29 @@ const Dashboard = {
                         </div>
                     </div>
                 ` : ''}
+                ${(() => {
+    const weekDist = this.getWeeklyTimeDistribution();
+    return weekDist.hasData ? `
+        <div class="dashboard-section">
+            <h2>📅 Last 7 Days Time Distribution</h2>
+            <div class="time-distribution-container">
+                <div class="pie-chart-container">
+                    ${this.renderPieChart(weekDist.data)}
+                </div>
+                <div class="time-legend">
+                    ${weekDist.data.map(item => `
+                        <div class="legend-item">
+                            <span class="legend-color" style="background: ${item.color}"></span>
+                            <span class="legend-label">${item.category}</span>
+                            <span class="legend-value">${item.hours}h ${item.minutes}m</span>
+                            <span class="legend-percent">(${item.percentage}%)</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        </div>
+    ` : '';
+})()}
 
                 <!-- Quick Stats -->
                 <div class="dashboard-section">
@@ -402,38 +425,7 @@ const Dashboard = {
                 });
                 totalMinutes += sleepMinutes;
             }
-        }
-        
-        // 4. Calculate time left today (until midnight)
-        const now = new Date();
-        const midnight = new Date(now);
-        midnight.setHours(24, 0, 0, 0);
-        const minutesUntilMidnight = Math.floor((midnight - now) / (1000 * 60));
-        
-        // 5. Calculate untracked time (time that has passed but wasn't logged)
-        const minutesSinceMidnight = now.getHours() * 60 + now.getMinutes();
-        const trackedMinutes = totalMinutes; // Everything tracked so far
-        const untrackedMinutes = Math.max(0, minutesSinceMidnight - trackedMinutes);
-        
-        // Add untracked time (past time not accounted for)
-        if (untrackedMinutes > 0) {
-            data.push({
-                name: 'Untracked Time',
-                totalMinutes: untrackedMinutes,
-                color: '#9ca3af' // Gray for untracked past time
-            });
-            totalMinutes += untrackedMinutes;
-        }
-        
-        // Add time left today (future time - golden opportunity!)
-        if (minutesUntilMidnight > 0) {
-            data.push({
-                name: 'Time Left Today',
-                totalMinutes: minutesUntilMidnight,
-                color: '#f59e0b' // Golden/amber for valuable remaining time
-            });
-            totalMinutes += minutesUntilMidnight;
-        }
+        }        
         
         if (data.length === 0) {
             return { hasData: false };
@@ -451,6 +443,77 @@ const Dashboard = {
 
         return { hasData: true, data: formattedData, totalMinutes };
     },
+
+    getWeeklyTimeDistribution() {
+    const colors = [
+        '#3b82f6', '#10b981', '#8b5cf6', '#f59e0b', '#ef4444',
+        '#06b6d4', '#ec4899', '#14b8a6', '#f97316', '#6366f1'
+    ];
+    let colorIndex = 0;
+    const data = [];
+    let totalMinutes = 0;
+
+    const end = new Date();
+    const start = new Date(end);
+    start.setDate(start.getDate() - 6);
+
+    // Time tracked entries
+    TimeTracker.timeEntries.forEach(entry => {
+        const entryDate = new Date(entry.startTime);
+        if (entryDate >= start && entryDate <= end) {
+            const existing = data.find(d => d.name === entry.activity);
+            if (existing) {
+                existing.totalMinutes += entry.duration;
+            } else {
+                data.push({ name: entry.activity, totalMinutes: entry.duration, color: colors[colorIndex++ % colors.length] });
+            }
+            totalMinutes += entry.duration;
+        }
+    });
+
+    // Screentime across the week
+    let weeklyScreentime = 0;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const entry = ScreentimeTracker.getEntry(Utils.getDateString(new Date(d)));
+        if (entry) weeklyScreentime += entry.totalMinutes;
+    }
+    if (weeklyScreentime > 0) {
+        data.push({ name: 'Social Media & Games', totalMinutes: weeklyScreentime, color: '#ef4444' });
+        totalMinutes += weeklyScreentime;
+    }
+
+    // Sleep across the week
+    const allCommitments = StorageManager.getAllCommitments();
+    let weeklySleep = 0;
+    for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = Utils.getDateString(new Date(d));
+        const prevDate = new Date(d);
+        prevDate.setDate(prevDate.getDate() - 1);
+        const prevDateStr = Utils.getDateString(prevDate);
+        const todayC = allCommitments[dateStr];
+        const prevC = allCommitments[prevDateStr];
+        if (todayC?.wakeup?.actual && prevC?.bedtime?.actual) {
+            weeklySleep += this.calculateSleepDuration(prevC.bedtime.actual, todayC.wakeup.actual);
+        }
+    }
+    if (weeklySleep > 0) {
+        data.push({ name: 'Sleep', totalMinutes: weeklySleep, color: '#6366f1' });
+        totalMinutes += weeklySleep;
+    }
+
+    if (data.length === 0) return { hasData: false };
+
+    const formattedData = data.map(item => ({
+        category: item.name,
+        minutes: item.totalMinutes % 60,
+        hours: Math.floor(item.totalMinutes / 60),
+        totalMinutes: item.totalMinutes,
+        percentage: Math.round((item.totalMinutes / totalMinutes) * 100),
+        color: item.color
+    })).sort((a, b) => b.totalMinutes - a.totalMinutes);
+
+    return { hasData: true, data: formattedData, totalMinutes };
+},
     
     /**
      * Calculate sleep duration between bedtime and wake-up

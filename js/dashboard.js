@@ -149,6 +149,26 @@ const Dashboard = {
                 </div>
 
                 <!-- Commitments for Tomorrow -->
+                ${(() => {
+                    const weekKey = CommitmentTracker.getWeekKey();
+                    const review = StorageManager.getWeeklyReviews()[weekKey];
+                    const goals = review?.goals || [];
+                    if (goals.length === 0) return '';
+                    return `
+                        <div class="dashboard-section">
+                            <h2>🎯 This Week's Goals</h2>
+                            <div class="weekly-goals-list">
+                                ${goals.map((g, i) => `
+                                    <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
+                                        <input type="checkbox" ${g.completed ? 'checked' : ''}
+                                            onchange="Dashboard.toggleWeeklyGoal('${weekKey}', ${i}); Dashboard.render();">
+                                        <span>${Utils.escapeHtml(g.title)}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                })()}
                 ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
             </div>
         `;

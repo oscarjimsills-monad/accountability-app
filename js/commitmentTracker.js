@@ -251,18 +251,39 @@ const CommitmentTracker = {
         return lastCheckin !== today && hour >= 5;
     },
 
+    needsWeeklyReview() {
+        const hour = new Date().getHours();
+        const day = new Date().getDay(); // 0 = Sunday
+        const isReviewTime = day === 0 && (hour >= 20 || hour < 5);
+        if (!isReviewTime) return false;
+
+        const lastReview = StorageManager.getLastWeeklyReview();
+        const thisWeekKey = this.getWeekKey();
+        return lastReview !== thisWeekKey;
+    },
+
+    getWeekKey(date = new Date()) {
+        // Returns the Monday date string of the week containing date
+        const d = new Date(date);
+        const day = d.getDay();
+        const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+        d.setDate(diff);
+        return Utils.getDateString(d);
+    },
+
+    completeWeeklyReview() {
+        StorageManager.saveLastWeeklyReview(this.getWeekKey());
+    },
+
     /**
      * Check if evening check-in is needed
      */
     needsEveningCheckin() {
         const lastEveningCheckin = StorageManager.getLastEveningCheckin();
-        const today = Utils.getTodayString();
+        const logDate = Utils.getLogDateString();
         const hour = new Date().getHours();
-        
-        // Show evening check-in between 8pm and 5am
         const isEveningTime = hour >= 20 || hour < 5;
-        
-        return isEveningTime && lastEveningCheckin !== today;
+        return isEveningTime && lastEveningCheckin !== logDate;
     },
 
     /**
@@ -276,7 +297,7 @@ const CommitmentTracker = {
      * Mark evening check-in complete
      */
     completeEveningCheckin() {
-        StorageManager.saveLastEveningCheckin(Utils.getTodayString());
+        StorageManager.saveLastEveningCheckin(Utils.getLogDateString());
     },
 
     /**

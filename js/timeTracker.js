@@ -151,6 +151,7 @@ const TimeTracker = {
             endTime: entryData.endTime,
             duration: this.calculateDuration(entryData.startTime, entryData.endTime),
             notes: entryData.notes || '',
+            focusRating: entryData.focusRating || null,
             date: Utils.getDateString(entryData.startTime)
         };
 

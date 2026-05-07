@@ -65,12 +65,15 @@ const App = {
         const mainApp = document.getElementById('main-app');
         
         // Check if check-in is needed
-        if (CommitmentTracker.needsMorningCheckin() || CommitmentTracker.needsEveningCheckin()) {
+        if (CommitmentTracker.needsWeeklyReview()) {
+            if (promptContainer) promptContainer.style.display = 'block';
+            if (mainApp) mainApp.style.display = 'none';
+            PromptFlow.startWeeklyReview();
+        } else if (CommitmentTracker.needsMorningCheckin() || CommitmentTracker.needsEveningCheckin()) {
             if (promptContainer) promptContainer.style.display = 'block';
             if (mainApp) mainApp.style.display = 'none';
             PromptFlow.startCheckIn();
         } else {
-            // Go directly to dashboard
             if (promptContainer) promptContainer.style.display = 'none';
             if (mainApp) mainApp.style.display = 'grid';
             this.showDashboard();
@@ -260,9 +263,6 @@ const App = {
                 html += '</div>';
                 html += '<div class="obligation-content">';
                 html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
-                html += '<div class="obligation-time">';
-                html += '<span class="time-icon">⏰</span>';
-                html += '<span>' + Utils.formatTimeString(obligation.time) + '</span>';
                 html += '</div></div>';
                 if (obligation.completed) {
                     html += '<div class="completion-badge">✓</div>';

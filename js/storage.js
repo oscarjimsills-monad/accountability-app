@@ -13,7 +13,9 @@ const STORAGE_KEYS = {
     SETTINGS: 'accountability_settings',
     LAST_CHECKIN: 'accountability_lastCheckin',
     LAST_EVENING_CHECKIN: 'accountability_lastEveningCheckin',
-    USER_NAME: 'accountability_userName'
+    USER_NAME: 'accountability_userName',
+    WEEKLY_REVIEWS: 'accountability_weeklyReviews',
+    LAST_WEEKLY_REVIEW: 'accountability_lastWeeklyReview'
 };
 
 const StorageManager = {
@@ -322,7 +324,25 @@ const StorageManager = {
         } catch (error) {
             return false;
         }
-    }
+    },
+
+    getWeeklyReviews() {
+        return this.load(STORAGE_KEYS.WEEKLY_REVIEWS) || {};
+    },
+
+    saveWeeklyReview(weekKey, review) {
+        const reviews = this.getWeeklyReviews();
+        reviews[weekKey] = review;
+        return this.save(STORAGE_KEYS.WEEKLY_REVIEWS, reviews);
+    },
+
+    getLastWeeklyReview() {
+        return this.load(STORAGE_KEYS.LAST_WEEKLY_REVIEW);
+    },
+
+    saveLastWeeklyReview(weekKey) {
+        return this.save(STORAGE_KEYS.LAST_WEEKLY_REVIEW, weekKey);
+    },
 };
 
 // Make StorageManager available globally

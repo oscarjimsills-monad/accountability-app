@@ -248,7 +248,7 @@ const CommitmentTracker = {
         const lastCheckin = StorageManager.getLastCheckin();
         const today = Utils.getTodayString();
         const hour = new Date().getHours();
-        return lastCheckin !== today && hour >= 5;
+        return lastCheckin !== today && hour >= 5 && hour < 20;
     },
 
     needsWeeklyReview() {

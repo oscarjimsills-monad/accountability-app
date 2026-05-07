@@ -126,7 +126,11 @@ const PromptFlow = {
      * Render current step
      */
     renderStep() {
-        const steps = this.currentFlow === 'morning' ? this.getMorningSteps() : this.getEveningSteps();
+        const steps = this.currentFlow === 'morning'
+            ? this.getMorningSteps() 
+            : this.currentFlow === 'weekly'
+                ? this.getWeeklySteps()
+                : this.getEveningSteps();
         const step = steps[this.currentStep];
         
         if (!step) {

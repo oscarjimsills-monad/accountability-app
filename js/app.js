@@ -648,6 +648,9 @@ const App = {
                     <span class="stat-value">${stats.daysLogged}/${stats.totalDays}</span>
                 </div>
             </div>
+
+            <!-- Screentime History Graph -->
+            <div id="screentime-graph-container" style="margin: 1.5rem 0;"></div>
             
             ${analysis.hasEnoughData ? `
                 <!-- Pattern Analysis -->
@@ -711,7 +714,11 @@ const App = {
         `;
         
         // Render the apps list after the HTML is inserted
-        setTimeout(() => this.renderTodayAppsList(), 0);
+        // Render the apps list and graph after the HTML is inserted
+        setTimeout(() => {
+            this.renderTodayAppsList();
+            ScreentimeGraph.mount('#screentime-graph-container');
+        }, 0);
     },
 
     /**

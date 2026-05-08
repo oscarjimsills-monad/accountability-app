@@ -1746,3 +1746,42 @@
         padding: 0.75rem;
     }
 }
+
+
+/* Shopping List Footer */
+.shopping-list-footer {
+    margin-top: 3rem;
+    padding-top: 2rem;
+}
+
+.footer-divider {
+    height: 2px;
+    background: var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.footer-title {
+    font-size: 1rem;
+    color: var(--text-secondary);
+    margin: 0 0 1rem 0;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.footer-actions {
+    display: flex;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+    .footer-actions {
+        flex-direction: column;
+    }
+
+    .footer-actions button {
+        width: 100%;
+        justify-content: center;
+    }
+}

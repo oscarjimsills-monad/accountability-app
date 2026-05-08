@@ -257,17 +257,6 @@ const ShoppingListManager = {
                     <span>➕</span> Add Item
                 </button>
                 <div class="action-group">
-                    <button id="export-list-btn" class="btn btn-secondary">
-                        <span>📥</span> Export JSON
-                    </button>
-                    <button id="export-text-btn" class="btn btn-secondary">
-                        <span>📄</span> Export Text
-                    </button>
-                    <button id="import-list-btn" class="btn btn-secondary">
-                        <span>📤</span> Import
-                    </button>
-                </div>
-                <div class="action-group">
                     <button id="clear-checked-btn" class="btn btn-text">
                         Clear Checked
                     </button>
@@ -320,6 +309,22 @@ const ShoppingListManager = {
                         </div>
                     ` : ''}
                 `}
+            </div>
+
+            <div class="shopping-list-footer">
+                <div class="footer-divider"></div>
+                <h3 class="footer-title">Export / Import</h3>
+                <div class="footer-actions">
+                    <button id="export-list-btn" class="btn btn-secondary">
+                        <span>📥</span> Export JSON
+                    </button>
+                    <button id="export-text-btn" class="btn btn-secondary">
+                        <span>📄</span> Export Text
+                    </button>
+                    <button id="import-list-btn" class="btn btn-secondary">
+                        <span>📤</span> Import
+                    </button>
+                </div>
             </div>
         `;
     },

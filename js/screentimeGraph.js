@@ -265,30 +265,64 @@ const ScreentimeGraph = {
     /**
      * Compute G(x) for every day in the range.
      *
-     * G(x) = (1/3) * [
-     *     sum_{i=1}^{inf} f(x-i)/2^i
+     * G(x) = (1/9) * [
+     *     sum_{i=1}^{inf} f(x-i)*(4/5)^i
      *   + f(x)
-     *   + sum_{i=1}^{inf} f(x+i)/2^i
+     *   + sum_{i=1}^{inf} f(x+i)*(4/5)^i
      * ]
      *
-     * We truncate at TERMS = 20 (contributes < 1e-6 of any realistic value).
-     * f(z) = byDate[z] if z exists, else globalMean.
+     * For x > present: f(x) = mean of last 5 days
+     * For x < first session: f(x) = global mean
+     * Otherwise: f(x) = actual screentime on day x, or global mean if no data
+     *
+     * We truncate at TERMS = 15 (0.8^15 ≈ 0.035, contributes < 5% weight).
      */
     _computeTrend(range) {
-        const TERMS = 20;
+        const TERMS = 15;
         const byDate = {};
         (ScreentimeTracker.entries || []).forEach(e => { byDate[e.date] = e.totalMinutes; });
         const mean = this._globalMean();
+        
+        // Find first and last dates with data
+        const datesWithData = Object.keys(byDate).sort();
+        const firstDataDate = datesWithData.length > 0 ? datesWithData[0] : null;
+        const today = Utils.getLogDateString();
+        
+        // Helper: get mean of last N days with data
+        const getRecentMean = (beforeDate, n = 5) => {
+            const before = new Date(beforeDate);
+            const recent = [];
+            for (let i = 1; i <= n * 2 && recent.length < n; i++) {
+                const d = new Date(before);
+                d.setDate(before.getDate() - i);
+                const dateStr = Utils.getDateString(d);
+                if (dateStr in byDate) {
+                    recent.push(byDate[dateStr]);
+                }
+            }
+            return recent.length > 0 ? recent.reduce((a, b) => a + b, 0) / recent.length : mean;
+        };
 
         // f(z) as a function of date string
-        const f = dateStr => (dateStr in byDate) ? byDate[dateStr] : mean;
+        const f = dateStr => {
+            // Future dates (beyond today): use mean of last 5 days
+            if (dateStr > today) {
+                return getRecentMean(today);
+            }
+            // Before first data: use global mean
+            if (firstDataDate && dateStr < firstDataDate) {
+                return mean;
+            }
+            // Otherwise: actual data or global mean
+            return (dateStr in byDate) ? byDate[dateStr] : mean;
+        };
 
         return range.map(({ date }) => {
-            const x   = new Date(date);
+            const x = new Date(date);
             let total = f(date);  // f(x) term
 
             for (let i = 1; i <= TERMS; i++) {
-                const weight = Math.pow(2, -i);
+                const weight = Math.pow(0.8, i);  // (4/5)^i
 
                 const past = new Date(x);
                 past.setDate(x.getDate() - i);
@@ -299,7 +333,7 @@ const ScreentimeGraph = {
                 total += f(Utils.getDateString(future)) * weight;
             }
 
-            return total / 3;
+            return total / 9;  // Normalize by 9
         });
     },
 

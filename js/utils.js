@@ -79,8 +79,15 @@ const Utils = {
      * Get current log date string (respects 5am day boundary)
      */
     getLogDateString() {
-        const hour = new Date().getHours();
-        return hour < 5 ? this.getYesterdayString() : this.getTodayString();
+        const now = new Date();
+        const hour = now.getHours();
+        // If before 5am, the log date is still "yesterday" (the previous calendar day)
+        if (hour < 5) {
+            const yesterday = new Date(now);
+            yesterday.setDate(yesterday.getDate() - 1);
+            return this.getDateString(yesterday);
+        }
+        return this.getDateString(now);
     },
     
     /**

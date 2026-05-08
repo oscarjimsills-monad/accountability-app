@@ -231,7 +231,7 @@ const CommitmentTracker = {
      * Get commitment for today
      */
     getTodayCommitment() {
-        return StorageManager.getCommitments(Utils.getTodayString());
+        return StorageManager.getCommitments(Utils.getLogDateString());
     },
 
     /**
@@ -246,7 +246,7 @@ const CommitmentTracker = {
      */
     needsMorningCheckin() {
         const lastCheckin = StorageManager.getLastCheckin();
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const hour = new Date().getHours();
         return lastCheckin !== today && hour >= 5 && hour < 20;
     },
@@ -290,7 +290,7 @@ const CommitmentTracker = {
      * Mark morning check-in complete
      */
     completeMorningCheckin() {
-        StorageManager.saveLastCheckin(Utils.getTodayString());
+        StorageManager.saveLastCheckin(Utils.getLogDateString());
     },
 
     /**

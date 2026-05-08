@@ -271,7 +271,7 @@ const HabitManager = {
      */
     getStats() {
         const active = this.getActiveHabits();
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const todayHabits = this.getTodayHabits();
         const completedToday = todayHabits.filter(h => h.completions.includes(today)).length;
 
@@ -345,7 +345,7 @@ const HabitManager = {
      * Render habit card
      */
     renderHabitCard(habit) {
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const completed = habit.completions.includes(today);
         const streak = this.calculateStreak(habit.id);
         const successRate = this.calculateSuccessRate(habit.id, 30);

@@ -143,6 +143,19 @@ const TimeTracker = {
      * Create manual time entry
      */
     createEntry(entryData) {
+        // Calculate log date based on 5am boundary
+        const startDate = new Date(entryData.startTime);
+        const hour = startDate.getHours();
+        let logDate;
+        if (hour < 5) {
+            // Before 5am, belongs to previous day
+            const prevDay = new Date(startDate);
+            prevDay.setDate(prevDay.getDate() - 1);
+            logDate = Utils.getDateString(prevDay);
+        } else {
+            logDate = Utils.getDateString(startDate);
+        }
+        
         const entry = {
             id: Utils.generateId(),
             activity: entryData.activity,
@@ -152,7 +165,7 @@ const TimeTracker = {
             duration: this.calculateDuration(entryData.startTime, entryData.endTime),
             notes: entryData.notes || '',
             focusRating: entryData.focusRating || null,
-            date: Utils.getDateString(entryData.startTime)
+            date: logDate
         };
 
         this.timeEntries.push(entry);
@@ -174,9 +187,20 @@ const TimeTracker = {
 
         Object.assign(entry, updates);
         
-        // Recalculate duration if times changed
+        // Recalculate duration and date if times changed
         if (updates.startTime || updates.endTime) {
             entry.duration = this.calculateDuration(entry.startTime, entry.endTime);
+            
+            // Recalculate log date based on 5am boundary
+            const startDate = new Date(entry.startTime);
+            const hour = startDate.getHours();
+            if (hour < 5) {
+                const prevDay = new Date(startDate);
+                prevDay.setDate(prevDay.getDate() - 1);
+                entry.date = Utils.getDateString(prevDay);
+            } else {
+                entry.date = Utils.getDateString(startDate);
+            }
         }
         
         this.saveTimeEntries();
@@ -222,7 +246,7 @@ const TimeTracker = {
      * Get today's entries
      */
     getTodayEntries() {
-        return this.getEntriesByDate(Utils.getTodayString());
+        return this.getEntriesByDate(Utils.getLogDateString());
     },
 
     /**

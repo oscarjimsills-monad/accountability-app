@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Evening Check-in Debug</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        .section { margin: 20px 0; padding: 10px; border: 1px solid #ccc; }
+        button { padding: 10px; margin: 5px; cursor: pointer; }
+        .clear-btn { background: #ff4444; color: white; }
+        .info { background: #f0f0f0; padding: 10px; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1>Evening Check-in Debugger</h1>
+    
+    <div class="section">
+        <h2>Current State</h2>
+        <div id="current-state"></div>
+    </div>
+    
+    <div class="section">
+        <h2>Actions</h2>
+        <button class="clear-btn" onclick="clearEveningCheckin()">Clear Evening Check-in Cache</button>
+        <button onclick="clearAllCheckins()">Clear All Check-ins</button>
+        <button onclick="location.reload()">Refresh</button>
+    </div>
+    
+    <div class="section">
+        <h2>All Storage Keys</h2>
+        <div id="all-keys"></div>
+    </div>
+
+    <script>
+        function displayState() {
+            const now = new Date();
+            const hour = now.getHours();
+            
+            // Get log date (respects 5am boundary)
+            let logDate;
+            if (hour < 5) {
+                const yesterday = new Date(now);
+                yesterday.setDate(yesterday.getDate() - 1);
+                logDate = yesterday.toISOString().split('T')[0];
+            } else {
+                logDate = now.toISOString().split('T')[0];
+            }
+            
+            const lastEveningCheckin = localStorage.getItem('accountability_lastEveningCheckin');
+            const lastCheckin = localStorage.getItem('accountability_lastCheckin');
+            const isEveningTime = hour >= 20 || hour < 5;
+            const needsEvening = isEveningTime && lastEveningCheckin !== logDate;
+            
+            document.getElementById('current-state').innerHTML = `
+                <div class="info"><strong>Current Time:</strong> ${now.toLocaleString()}</div>
+                <div class="info"><strong>Current Hour:</strong> ${hour}</div>
+                <div class="info"><strong>Log Date (5am boundary):</strong> ${logDate}</div>
+                <div class="info"><strong>Is Evening Time (8pm-5am):</strong> ${isEveningTime ? 'YES' : 'NO'}</div>
+                <div class="info"><strong>Last Evening Check-in:</strong> ${lastEveningCheckin || 'NONE'}</div>
+                <div class="info"><strong>Last Morning Check-in:</strong> ${lastCheckin || 'NONE'}</div>
+                <div class="info" style="background: ${needsEvening ? '#90EE90' : '#FFB6C1'}">
+                    <strong>Needs Evening Check-in:</strong> ${needsEvening ? 'YES ✓' : 'NO ✗'}
+                </div>
+            `;
+            
+            // Display all keys
+            const allKeys = Object.keys(localStorage).filter(k => k.startsWith('accountability_'));
+            document.getElementById('all-keys').innerHTML = allKeys.map(key => 
+                `<div class="info"><strong>${key}:</strong> ${localStorage.getItem(key)?.substring(0, 100)}</div>`
+            ).join('');
+        }
+        
+        function clearEveningCheckin() {
+            if (confirm('Clear evening check-in cache? This will trigger the evening check-in prompt.')) {
+                localStorage.removeItem('accountability_lastEveningCheckin');
+                alert('Evening check-in cache cleared!');
+                displayState();
+            }
+        }
+        
+        function clearAllCheckins() {
+            if (confirm('Clear ALL check-in caches? This will reset both morning and evening check-ins.')) {
+                localStorage.removeItem('accountability_lastEveningCheckin');
+                localStorage.removeItem('accountability_lastCheckin');
+                alert('All check-in caches cleared!');
+                displayState();
+            }
+        }
+        
+        displayState();
+    </script>
+</body>
+</html>

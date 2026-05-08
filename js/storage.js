@@ -15,7 +15,8 @@ const STORAGE_KEYS = {
     LAST_EVENING_CHECKIN: 'accountability_lastEveningCheckin',
     USER_NAME: 'accountability_userName',
     WEEKLY_REVIEWS: 'accountability_weeklyReviews',
-    LAST_WEEKLY_REVIEW: 'accountability_lastWeeklyReview'
+    LAST_WEEKLY_REVIEW: 'accountability_lastWeeklyReview',
+    SHOPPING_LIST: 'accountability_shoppingList'
 };
 
 const StorageManager = {
@@ -253,7 +254,8 @@ const StorageManager = {
                 reflections: this.getReflections(),
                 commitments: this.getAllCommitments(),
                 settings: this.getSettings(),
-                userName: this.getUserName()
+                userName: this.getUserName(),
+                shoppingList: this.getShoppingList()
             }
         };
         return data;
@@ -268,7 +270,7 @@ const StorageManager = {
                 throw new Error('Invalid data format');
             }
 
-            const { tasks, habits, goals, timeEntries, reflections, commitments, settings, userName } = data.data;
+            const { tasks, habits, goals, timeEntries, reflections, commitments, settings, userName, shoppingList } = data.data;
 
             if (tasks) this.saveTasks(tasks);
             if (habits) this.saveHabits(habits);
@@ -278,6 +280,7 @@ const StorageManager = {
             if (commitments) this.save(STORAGE_KEYS.COMMITMENTS, commitments);
             if (settings) this.saveSettings(settings);
             if (userName) this.saveUserName(userName);
+            if (shoppingList) this.saveShoppingList(shoppingList);
 
             return true;
         } catch (error) {
@@ -342,6 +345,55 @@ const StorageManager = {
 
     saveLastWeeklyReview(weekKey) {
         return this.save(STORAGE_KEYS.LAST_WEEKLY_REVIEW, weekKey);
+    },
+
+    /**
+     * Get shopping list items
+     */
+    getShoppingList() {
+        return this.load(STORAGE_KEYS.SHOPPING_LIST) || [];
+    },
+
+    /**
+     * Save shopping list items
+     */
+    saveShoppingList(items) {
+        return this.save(STORAGE_KEYS.SHOPPING_LIST, items);
+    },
+
+    /**
+     * Export shopping list only
+     */
+    exportShoppingList() {
+        const data = {
+            exportDate: new Date().toISOString(),
+            version: '1.0',
+            type: 'shoppingList',
+            data: {
+                shoppingList: this.getShoppingList()
+            }
+        };
+        return data;
+    },
+
+    /**
+     * Import shopping list only
+     */
+    importShoppingList(data) {
+        try {
+            if (!data || !data.data || !data.data.shoppingList) {
+                throw new Error('Invalid shopping list format');
+            }
+
+            const { shoppingList } = data.data;
+            this.saveShoppingList(shoppingList);
+
+            return true;
+        } catch (error) {
+            console.error('Shopping list import error:', error);
+            Utils.showError('Failed to import shopping list: ' + error.message);
+            return false;
+        }
     },
 };
 

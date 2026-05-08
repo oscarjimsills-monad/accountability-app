@@ -72,7 +72,7 @@ const ScreentimeTracker = {
      * Get today's entry
      */
     getTodayEntry() {
-        return this.getEntry(Utils.getTodayString());
+        return this.getEntry(Utils.getLogDateString());
     },
 
     /**

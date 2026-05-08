@@ -27,6 +27,7 @@ const App = {
                 TaskManager.init();
                 HabitManager.init();
                 GoalManager.init();
+                ShoppingListManager.init();
                 TimeTracker.init();
                 ScreentimeTracker.init();
                 ReflectionManager.init();
@@ -174,6 +175,9 @@ const App = {
             case 'goals':
                 this.renderGoalsView();
                 break;
+            case 'shopping':
+                this.renderShoppingView();
+                break;
             case 'time':
                 this.renderTimeView();
                 break;
@@ -237,14 +241,15 @@ const App = {
         const obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
         console.log('Obligations:', obligations);
         
-        const completedCount = obligations.filter(o => o.completed).length;
+        const pending = obligations.filter(o => !o.completed);
+        const completed = obligations.filter(o => o.completed);
         const totalCount = obligations.length;
         
         let html = '<div class="view-header">';
         html += '<h1>📋 Today\'s Obligations</h1>';
         html += '<div class="header-stats">';
-        html += '<span class="completion-badge ' + (completedCount === totalCount && totalCount > 0 ? 'complete' : '') + '">';
-        html += completedCount + '/' + totalCount + ' Complete';
+        html += '<span class="completion-badge ' + (completed.length === totalCount && totalCount > 0 ? 'complete' : '') + '">';
+        html += completed.length + '/' + totalCount + ' Complete';
         html += '</span></div></div>';
         
         if (obligations.length === 0) {
@@ -254,24 +259,55 @@ const App = {
             html += '<p>Set obligations during your evening check-in to see them here tomorrow.</p>';
             html += '</div>';
         } else {
-            html += '<div class="obligations-list">';
-            obligations.forEach((obligation, index) => {
-                html += '<div class="obligation-card ' + (obligation.completed ? 'completed' : '') + '">';
-                html += '<div class="obligation-checkbox">';
-                html += '<input type="checkbox" id="obligation-' + index + '" ' + (obligation.completed ? 'checked' : '') + ' onchange="App.toggleObligation(' + index + ')">';
-                html += '<label for="obligation-' + index + '"></label>';
-                html += '</div>';
-                html += '<div class="obligation-content">';
-                html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
+            // Pending obligations
+            if (pending.length > 0) {
+                html += '<div class="obligations-section">';
+                html += '<h2 class="section-title">⏳ Pending (' + pending.length + ')</h2>';
+                html += '<div class="obligations-list">';
+                obligations.forEach((obligation, index) => {
+                    if (!obligation.completed) {
+                        html += '<div class="obligation-card">';
+                        html += '<div class="obligation-checkbox">';
+                        html += '<input type="checkbox" id="obligation-' + index + '" onchange="App.toggleObligation(' + index + ')">';
+                        html += '<label for="obligation-' + index + '"></label>';
+                        html += '</div>';
+                        html += '<div class="obligation-content">';
+                        html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
+                        if (obligation.time) {
+                            html += '<span class="obligation-time">' + Utils.formatTimeString(obligation.time) + '</span>';
+                        }
+                        html += '</div></div>';
+                    }
+                });
                 html += '</div></div>';
-                if (obligation.completed) {
-                    html += '<div class="completion-badge">✓</div>';
-                }
-                html += '</div>';
-            });
-            html += '</div>';
+            }
             
-            if (completedCount === totalCount && totalCount > 0) {
+            // Completed obligations
+            if (completed.length > 0) {
+                html += '<div class="obligations-section">';
+                html += '<h2 class="section-title">✅ Completed (' + completed.length + ')</h2>';
+                html += '<div class="obligations-list">';
+                obligations.forEach((obligation, index) => {
+                    if (obligation.completed) {
+                        html += '<div class="obligation-card completed">';
+                        html += '<div class="obligation-checkbox">';
+                        html += '<input type="checkbox" id="obligation-' + index + '" checked onchange="App.toggleObligation(' + index + ')">';
+                        html += '<label for="obligation-' + index + '"></label>';
+                        html += '</div>';
+                        html += '<div class="obligation-content">';
+                        html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
+                        if (obligation.time) {
+                            html += '<span class="obligation-time">' + Utils.formatTimeString(obligation.time) + '</span>';
+                        }
+                        html += '</div>';
+                        html += '<div class="completion-badge">✓</div>';
+                        html += '</div>';
+                    }
+                });
+                html += '</div></div>';
+            }
+            
+            if (completed.length === totalCount && totalCount > 0) {
                 html += '<div class="success-message">';
                 html += '<h3>🎉 All obligations complete!</h3>';
                 html += '<p>Great job staying on top of your commitments today.</p>';
@@ -430,6 +466,19 @@ const App = {
         `;
         
         GoalManager.renderGoalList('goals-container');
+    },
+
+    /**
+     * Render shopping list view
+     */
+    renderShoppingView() {
+        const container = document.getElementById('main-content');
+        
+        container.innerHTML = `
+            <div id="shopping-list-container"></div>
+        `;
+        
+        ShoppingListManager.render();
     },
 
     /**
@@ -835,8 +884,8 @@ const App = {
         const appsList = this.tempScreentimeApps.map(app =>
             `${app.name} (${Math.floor(app.minutes / 60)}h ${app.minutes % 60}m)`
         ).join(', ');
-        
-        ScreentimeTracker.addEntry(Utils.getTodayString(), hours, minutes, appsList);
+        ScreentimeTracker.addEntry(Utils.getLogDateString(), hours, minutes, appsList);
+
         
         // Clear temporary apps
         this.tempScreentimeApps = [];
@@ -859,7 +908,7 @@ const App = {
             return;
         }
         
-        ScreentimeTracker.addEntry(Utils.getTodayString(), hours, minutes, notes);
+        ScreentimeTracker.addEntry(Utils.getLogDateString(), hours, minutes, notes);
         this.refreshCurrentView();
     },
 
@@ -993,6 +1042,47 @@ const App = {
                                     <span class="detail-value">${Utils.escapeHtml(commitment.wakeup.excuse)}</span>
                                 </div>
                             ` : ''}
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <!-- Obligations -->
+                ${commitment?.obligations && commitment.obligations.length > 0 ? `
+                    <div class="detail-section">
+                        <h2>📋 Obligations</h2>
+                        <div class="obligations-summary">
+                            ${commitment.obligations.map(o => `
+                                <div class="obligation-item ${o.completed ? 'completed' : 'incomplete'}">
+                                    <span class="obligation-status">${o.completed ? '✓' : '✗'}</span>
+                                    <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
+                                    ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
+                                </div>
+                            `).join('')}
+                        </div>
+                        <div class="completion-summary">
+                            ${commitment.obligations.filter(o => o.completed).length}/${commitment.obligations.length} completed
+                        </div>
+                    </div>
+                ` : ''}
+                
+                <!-- Priorities -->
+                ${commitment?.priorities && commitment.priorities.length > 0 ? `
+                    <div class="detail-section">
+                        <h2>🎯 Priorities</h2>
+                        <div class="priorities-summary">
+                            ${commitment.priorities.map(p => `
+                                <div class="priority-item">
+                                    <div class="priority-header">
+                                        <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
+                                        <span class="priority-level ${p.priority}">${p.priority}</span>
+                                    </div>
+                                    ${p.rating ? `
+                                        <div class="priority-rating">
+                                            Rating: ${'⭐'.repeat(p.rating)} (${p.rating}/3)
+                                        </div>
+                                    ` : '<div class="priority-rating">Not rated</div>'}
+                                </div>
+                            `).join('')}
                         </div>
                     </div>
                 ` : ''}
@@ -1369,8 +1459,8 @@ getDayTimeDistribution(date) {
     const data = [];
     let totalMinutes = 0;
 
-    // Time tracked
-    TimeTracker.timeEntries.filter(e => Utils.getDateString(new Date(e.startTime)) === date).forEach(entry => {
+    // Time tracked - use entry.date which respects the 5am boundary
+    TimeTracker.timeEntries.filter(e => e.date === date).forEach(entry => {
         const existing = data.find(d => d.name === entry.activity);
         if (existing) {
             existing.totalMinutes += entry.duration;

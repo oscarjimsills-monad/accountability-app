@@ -606,6 +606,76 @@ const PromptFlow = {
             },
 
             {
+                name: 'priorities-rating',
+                skippable: true,
+                render: (data) => {
+                    const logDate = Utils.getLogDateString();
+                    const commitment = StorageManager.getCommitments(logDate);
+                    const priorities = commitment?.priorities || [];
+
+                    if (priorities.length === 0) return `
+                        <div class="prompt-screen priorities-rating">
+                            <h2>🎯 Today's Priorities</h2>
+                            <p class="subtitle">No priorities were set for today.</p>
+                        </div>
+                    `;
+
+                    return `
+                        <div class="prompt-screen priorities-rating">
+                            <h2>🎯 How Well Did You Achieve Your Priorities?</h2>
+                            <p class="subtitle">Rate each priority: 1 = Not at all, 2 = Somewhat, 3 = Achieved well</p>
+                            
+                            <div class="priorities-rating-list">
+                                ${priorities.map((p, i) => `
+                                    <div class="priority-rating-card">
+                                        <div class="priority-info">
+                                            <h3 class="priority-title">${Utils.escapeHtml(p.title)}</h3>
+                                            <span class="priority-level ${p.priority}">${p.priority}</span>
+                                        </div>
+                                        <div class="rating-buttons">
+                                            ${[1, 2, 3].map(rating => `
+                                                <button class="rating-btn ${data.priorityRatings?.[i] === rating ? 'selected' : ''}"
+                                                    data-priority="${i}"
+                                                    data-rating="${rating}"
+                                                    onclick="PromptFlow.ratePriority(${i}, ${rating})">
+                                                    ${rating}
+                                                </button>
+                                            `).join('')}
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                },
+                validate: (data) => {
+                    const logDate = Utils.getLogDateString();
+                    const commitment = StorageManager.getCommitments(logDate);
+                    const priorities = commitment?.priorities || [];
+                    
+                    if (priorities.length === 0) return true;
+                    
+                    // Check if all priorities have been rated
+                    if (!data.priorityRatings) data.priorityRatings = {};
+                    
+                    const allRated = priorities.every((p, i) => data.priorityRatings[i] !== undefined);
+                    
+                    if (!allRated) {
+                        Utils.showError('Please rate all priorities');
+                        return false;
+                    }
+                    
+                    // Save ratings to commitment
+                    priorities.forEach((p, i) => {
+                        p.rating = data.priorityRatings[i];
+                    });
+                    StorageManager.saveCommitments(logDate, commitment);
+                    
+                    return true;
+                }
+            },
+
+            {
         name: 'day-walkthrough',
                 skippable: true,
                 render: (data) => {
@@ -615,24 +685,78 @@ const PromptFlow = {
                         const commitment = StorageManager.getCommitments(logDate);
                         const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
                         const [wh, wm] = wakeupTime.split(':').map(Number);
+                        
+                        // Load existing time entries for this day
+                        const existingEntries = TimeTracker.timeEntries.filter(entry => {
+                            return entry.date === logDate;
+                        }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+                        
+                        // Convert existing entries to sessions
+                        const sessions = existingEntries.map(entry => {
+                            const startTime = new Date(entry.startTime);
+                            const hour = startTime.getHours();
+                            const minute = startTime.getMinutes();
+                            
+                            // If the entry is after midnight but before 5am, add 1440 to represent next day
+                            let startMinutes = hour * 60 + minute;
+                            if (hour < 5) {
+                                startMinutes += 1440;
+                            }
+                            
+                            return {
+                                activity: entry.activity,
+                                duration: entry.duration,
+                                focusRating: null,
+                                startMinutes: startMinutes,
+                                fromTimeTracker: true
+                            };
+                        });
+                        
+                        // Find the starting point (either wakeup or first logged activity)
+                        let startMinutes = wh * 60 + wm;
+                        if (sessions.length > 0 && sessions[0].startMinutes < startMinutes) {
+                            startMinutes = sessions[0].startMinutes;
+                        }
+                        
+                        // Calculate current position (end of last session or wakeup time)
+                        let currentMinutes = startMinutes;
+                        if (sessions.length > 0) {
+                            const lastSession = sessions[sessions.length - 1];
+                            currentMinutes = lastSession.startMinutes + lastSession.duration;
+                        }
+                        
                         data.walkthrough = {
-                            currentMinutes: wh * 60 + wm,
-                            sessions: [],
-                            phase: 'activity' // 'activity' | 'duration' | 'focus' | 'skip-duration'
+                            currentMinutes: currentMinutes,
+                            sessions: sessions,
+                            phase: 'activity', // 'activity' | 'duration' | 'focus' | 'skip-duration'
+                            logDate: logDate
                         };
                     }
 
                     const wt = data.walkthrough;
                     const now = new Date();
-                    const nowMinutes = now.getHours() * 60 + now.getMinutes();
-                    const totalDayMinutes = nowMinutes - wt.currentMinutes + (wt.currentMinutes > nowMinutes ? 1440 : 0);
+                    const currentHour = now.getHours();
+                    
+                    // Always end at current time
+                    // If before 5am, add 1440 to represent time past midnight
+                    let endOfDayMinutes;
+                    if (currentHour < 5) {
+                        // Past midnight (00:00-04:59), so add 1440 to current time
+                        // e.g., 01:16 = 76 minutes, becomes 1440 + 76 = 1516 minutes
+                        endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
+                    } else {
+                        // Same day (05:00-23:59), use current time
+                        endOfDayMinutes = currentHour * 60 + now.getMinutes();
+                    }
+                    
+                    const totalDayMinutes = endOfDayMinutes - wt.currentMinutes + (wt.currentMinutes > endOfDayMinutes ? 1440 : 0);
                     const accountedMinutes = wt.sessions.reduce((sum, s) => sum + s.duration, 0);
                     const progressPct = totalDayMinutes > 0 ? Math.min(100, Math.round((accountedMinutes / totalDayMinutes) * 100)) : 0;
 
-                    const currentTimeStr = `${String(Math.floor(wt.currentMinutes / 60)).padStart(2, '0')}:${String(wt.currentMinutes % 60).padStart(2, '0')}`;
+                    const currentTimeStr = `${String(Math.floor(wt.currentMinutes / 60) % 24).padStart(2, '0')}:${String(wt.currentMinutes % 60).padStart(2, '0')}`;
                     const formattedTime = Utils.formatTimeString(currentTimeStr);
 
-                    const remainingMinutes = nowMinutes - wt.currentMinutes;
+                    const remainingMinutes = endOfDayMinutes - wt.currentMinutes;
                     const isComplete = remainingMinutes <= 0;
 
                     if (isComplete) {
@@ -660,6 +784,9 @@ const PromptFlow = {
                     }
 
                     if (wt.phase === 'activity') {
+                        const trackedCount = wt.sessions.filter(s => s.fromTimeTracker).length;
+                        const manualCount = wt.sessions.length - trackedCount;
+                        
                         return `
                             <div class="prompt-screen day-walkthrough">
                                 <h2>🗓️ Walk Through Your Day</h2>
@@ -669,7 +796,8 @@ const PromptFlow = {
                                     <div class="progress-bar">
                                         <div class="progress-fill" style="width: ${progressPct}%"></div>
                                     </div>
-                                    <p class="progress-text">${Utils.formatMinutes(accountedMinutes)} of ~${Utils.formatMinutes(Math.max(0, nowMinutes - (wt.currentMinutes - accountedMinutes)))} accounted for</p>
+                                    <p class="progress-text">${Utils.formatMinutes(accountedMinutes)} of ~${Utils.formatMinutes(totalDayMinutes)} accounted for</p>
+                                    ${trackedCount > 0 ? `<p class="info-text">✓ ${trackedCount} activities already logged from time tracker</p>` : ''}
                                 </div>
 
                                 ${wt.sessions.length > 0 ? `
@@ -680,7 +808,7 @@ const PromptFlow = {
 
                                 <div class="form-group">
                                     <label for="wt-activity">Activity</label>
-                                    <input type="text" id="wt-activity" class="input-text" placeholder="e.g. Slept, Worked on example sheet, Lunch...">
+                                    <input type="text" id="wt-activity" class="input-text" placeholder="e.g. Slept, Worked on example sheet, Lunch..." autofocus>
                                 </div>
 
                                 <button class="btn btn-text" onclick="PromptFlow.walkthroughSkip()">
@@ -691,6 +819,10 @@ const PromptFlow = {
                     }
 
                     if (wt.phase === 'duration') {
+                        const remainingMinutes = Math.max(0, endOfDayMinutes - wt.currentMinutes);
+                        const remainingHours = Math.floor(remainingMinutes / 60);
+                        const remainingMins = remainingMinutes % 60;
+                        
                         return `
                             <div class="prompt-screen day-walkthrough">
                                 <h2>⏱️ How long?</h2>
@@ -707,7 +839,11 @@ const PromptFlow = {
                                     </div>
                                 </div>
 
-                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(Math.max(0, nowMinutes - wt.currentMinutes))}</p>
+                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(remainingMinutes)}</p>
+                                
+                                <button class="btn btn-secondary" onclick="PromptFlow.walkthroughUntilNow()">
+                                    Until now (${remainingHours}h ${remainingMins}m)
+                                </button>
                             </div>
                         `;
                     }
@@ -754,7 +890,7 @@ const PromptFlow = {
                                     </div>
                                 </div>
 
-                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(Math.max(0, nowMinutes - wt.currentMinutes))}</p>
+                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(Math.max(0, endOfDayMinutes - wt.currentMinutes))}</p>
                             </div>
                         `;
                     }
@@ -764,7 +900,15 @@ const PromptFlow = {
                     if (!wt) return true;
 
                     const now = new Date();
-                    const nowMinutes = now.getHours() * 60 + now.getMinutes();
+                    const currentHour = now.getHours();
+                    
+                    // Calculate end of day minutes (same logic as render)
+                    let endOfDayMinutes;
+                    if (currentHour < 5) {
+                        endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
+                    } else {
+                        endOfDayMinutes = currentHour * 60 + now.getMinutes();
+                    }
 
                     if (wt.phase === 'activity') {
                         const activity = document.getElementById('wt-activity')?.value.trim();
@@ -808,7 +952,7 @@ const PromptFlow = {
                     }
 
                     // If complete, allow moving to next step
-                    if (nowMinutes - wt.currentMinutes <= 0) return true;
+                    if (endOfDayMinutes - wt.currentMinutes <= 0) return true;
 
                     // Otherwise keep going
                     return true;
@@ -1369,10 +1513,25 @@ const PromptFlow = {
         tomorrow.setDate(tomorrow.getDate() + (hour < 5 ? 0 : 1));
         const tomorrowStr = Utils.getDateString(tomorrow);
 
+        // Get today's incomplete obligations and carry them over
+        const logDate = Utils.getLogDateString();
+        const todayCommitment = StorageManager.getCommitments(logDate);
+        const incompleteObligations = (todayCommitment?.obligations || [])
+            .filter(o => !o.completed)
+            .map(o => ({
+                title: o.title,
+                time: o.time,
+                completed: false
+            }));
+        
+        // Merge incomplete obligations with new ones
+        const newObligations = this.flowData.obligations || [];
+        const allObligations = [...incompleteObligations, ...newObligations];
+
         // Save commitments
         CommitmentTracker.setCommitment('wakeup', this.flowData.wakeupCommitment, tomorrowStr);
         CommitmentTracker.setCommitment('bedtime', this.flowData.bedtimeCommitment, eveningDate);
-        CommitmentTracker.setCommitment('obligations', this.flowData.obligations || [], tomorrowStr);
+        CommitmentTracker.setCommitment('obligations', allObligations, tomorrowStr);
         CommitmentTracker.setCommitment('priorities', this.flowData.priorities || [], tomorrowStr);
 
         // Save screentime to the evening's date, not necessarily today
@@ -1401,6 +1560,14 @@ const PromptFlow = {
         const mainApp = document.getElementById('main-app');
         if (promptContainer) promptContainer.style.display = 'block';
         if (mainApp) mainApp.style.display = 'none';
+    },
+
+    ratePriority(priorityIndex, rating) {
+        if (!this.flowData.priorityRatings) {
+            this.flowData.priorityRatings = {};
+        }
+        this.flowData.priorityRatings[priorityIndex] = rating;
+        this.renderStep();
     },
 
     /**
@@ -1446,6 +1613,35 @@ const PromptFlow = {
         this.renderStep();
     },
 
+    walkthroughUntilNow() {
+        const wt = this.flowData.walkthrough;
+        if (!wt || wt.phase !== 'duration') return;
+        
+        const now = new Date();
+        const currentHour = now.getHours();
+        
+        // Calculate end of day minutes (same logic as render/validate)
+        let endOfDayMinutes;
+        if (currentHour < 5) {
+            endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
+        } else {
+            endOfDayMinutes = currentHour * 60 + now.getMinutes();
+        }
+        
+        // Calculate duration from current position to now
+        const duration = endOfDayMinutes - wt.currentMinutes;
+        
+        if (duration <= 0) {
+            Utils.showError('Already at current time');
+            return;
+        }
+        
+        // Set the duration and move to focus phase
+        wt.pendingDuration = duration;
+        wt.phase = 'focus';
+        this.renderStep();
+    },
+
     walkthroughSetFocus(rating) {
         const wt = this.flowData.walkthrough;
         if (!wt) return;
@@ -1482,9 +1678,26 @@ const PromptFlow = {
         wt.pendingActivity = null;
         wt.pendingDuration = null;
         wt.pendingStartMinutes = null;
-        wt.phase = 'activity';
-
-        this.renderStep();
+        
+        // Check if we've reached current time
+        const now = new Date();
+        const currentHour = now.getHours();
+        let endOfDayMinutes;
+        if (currentHour < 5) {
+            endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
+        } else {
+            endOfDayMinutes = currentHour * 60 + now.getMinutes();
+        }
+        
+        // If we've reached or passed current time, move to next step
+        if (wt.currentMinutes >= endOfDayMinutes) {
+            // Walkthrough complete, move to next step
+            this.handleNext();
+        } else {
+            // Continue with more activities
+            wt.phase = 'activity';
+            this.renderStep();
+        }
     },
 };
 

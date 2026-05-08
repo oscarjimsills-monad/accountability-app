@@ -23,7 +23,7 @@ const Dashboard = {
             <div class="dashboard">
                 <div class="dashboard-header">
                     <h1>Dashboard</h1>
-                    <p class="dashboard-date">${Utils.formatDate(new Date(), 'long')}</p>
+                    <p class="dashboard-date">${Utils.formatDate(new Date(Utils.getLogDateString()), 'long')}</p>
                 </div>
 
                 <!-- Streaks Overview -->
@@ -229,7 +229,7 @@ const Dashboard = {
      */
     renderTodayHabits(habitStats) {
         const todayHabits = HabitManager.getTodayHabits();
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
 
         return `
             <div class="today-card">
@@ -288,7 +288,7 @@ const Dashboard = {
         });
 
         // Recent habit completions
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const completedHabits = HabitManager.getActiveHabits()
             .filter(h => h.completions.includes(today))
             .slice(0, 3);
@@ -384,7 +384,7 @@ const Dashboard = {
      * Get time distribution for current day (today only)
      */
     getTimeDistribution() {
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         const data = [];
         let totalMinutes = 0;
         
@@ -396,9 +396,9 @@ const Dashboard = {
         let colorIndex = 0;
         
         // 1. Add time-tracked activities (by specific activity name, not category)
+        // Use entry.date which respects the 5am boundary
         const todayEntries = TimeTracker.timeEntries.filter(entry => {
-            const entryDate = Utils.getDateString(new Date(entry.startTime));
-            return entryDate === today;
+            return entry.date === today;
         });
         
         todayEntries.forEach(entry => {

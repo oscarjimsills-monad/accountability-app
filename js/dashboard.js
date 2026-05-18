@@ -595,14 +595,13 @@ const Dashboard = {
         const screentimeStreak = ScreentimeTracker.getStreak(90); // 1.5 hours goal
         const activeHabits = HabitManager.getActiveHabits();
         
-        // Get top 3 habits by current streak
+        // Get ALL habits with their streaks, sorted by current streak
         const habitStreaks = activeHabits
             .map(habit => ({
                 ...habit,
                 streak: HabitManager.calculateStreak(habit.id)
             }))
-            .sort((a, b) => b.streak.current - a.streak.current)
-            .slice(0, 3);
+            .sort((a, b) => b.streak.current - a.streak.current);
         
         return `
             <div class="streaks-grid">
@@ -626,7 +625,7 @@ const Dashboard = {
                     </div>
                 </div>
                 
-                <!-- Top Habits -->
+                <!-- All Habits -->
                 ${habitStreaks.map(habit => `
                     <div class="streak-card ${habit.streak.current > 0 ? 'streak-active' : ''}">
                         <div class="streak-icon">🔄</div>

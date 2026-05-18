@@ -292,7 +292,7 @@ const TaskManager = {
     renderTaskCard(task) {
         const priorityClass = `priority-${task.priority}`;
         const completedClass = task.completed ? 'completed' : '';
-        const overdueClass = task.dueDate && task.dueDate < Utils.getTodayString() && !task.completed ? 'overdue' : '';
+        const overdueClass = task.dueDate && task.dueDate < Utils.getLogDateString() && !task.completed ? 'overdue' : '';
 
         return `
             <div class="task-card ${completedClass} ${overdueClass}" data-task-id="${task.id}">

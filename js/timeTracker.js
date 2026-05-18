@@ -229,7 +229,7 @@ const TimeTracker = {
     /**
      * Get entries by date
      */
-    getEntriesByDate(date = Utils.getTodayString()) {
+    getEntriesByDate(date = Utils.getLogDateString()) {
         return this.timeEntries.filter(entry => entry.date === date);
     },
 
@@ -259,7 +259,7 @@ const TimeTracker = {
         
         return this.getEntriesByDateRange(
             Utils.getDateString(startOfWeek),
-            Utils.getTodayString()
+            Utils.getLogDateString()
         );
     },
 

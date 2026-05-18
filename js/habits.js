@@ -109,7 +109,7 @@ const HabitManager = {
     /**
      * Mark habit as complete for a date
      */
-    completeHabit(id, date = Utils.getTodayString()) {
+    completeHabit(id, date = Utils.getLogDateString()) {
         const habit = this.getHabit(id);
         if (!habit) return null;
 
@@ -126,7 +126,7 @@ const HabitManager = {
     /**
      * Mark habit as incomplete for a date
      */
-    uncompleteHabit(id, date = Utils.getTodayString()) {
+    uncompleteHabit(id, date = Utils.getLogDateString()) {
         const habit = this.getHabit(id);
         if (!habit) return null;
 
@@ -142,7 +142,7 @@ const HabitManager = {
     /**
      * Toggle habit completion for a date
      */
-    toggleHabit(id, date = Utils.getTodayString()) {
+    toggleHabit(id, date = Utils.getLogDateString()) {
         const habit = this.getHabit(id);
         if (!habit) return null;
 
@@ -156,7 +156,7 @@ const HabitManager = {
     /**
      * Check if habit is completed for a date
      */
-    isCompleted(id, date = Utils.getTodayString()) {
+    isCompleted(id, date = Utils.getLogDateString()) {
         const habit = this.getHabit(id);
         if (!habit) return false;
         return habit.completions.includes(date);
@@ -175,11 +175,19 @@ const HabitManager = {
         let currentStreak = 0;
         let longestStreak = 0;
         let tempStreak = 0;
-        let expectedDate = new Date();
+        
+        // Use log date to respect 5am boundary
+        const today = Utils.getLogDateString();
+        const todayCompleted = habit.completions.includes(today);
+        
+        // Start from today if completed, otherwise start from yesterday
+        let expectedDate = new Date(today);
+        if (!todayCompleted) {
+            expectedDate.setDate(expectedDate.getDate() - 1);
+        }
 
-        // Check current streak
+        // Check current streak (from expected date backwards)
         for (const dateStr of sortedDates) {
-            const date = new Date(dateStr);
             const expectedDateStr = Utils.getDateString(expectedDate);
 
             if (dateStr === expectedDateStr) {

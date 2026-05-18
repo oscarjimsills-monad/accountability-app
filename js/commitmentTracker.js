@@ -7,7 +7,7 @@ const CommitmentTracker = {
     /**
      * Set a commitment for a specific date
      */
-    setCommitment(type, value, date = Utils.getTodayString()) {
+    setCommitment(type, value, date = Utils.getLogDateString()) {
         const commitments = StorageManager.getCommitments(date) || this.createEmptyCommitment(date);
         
         if (type === 'wakeup') {
@@ -29,7 +29,7 @@ const CommitmentTracker = {
     /**
      * Check/record actual value for a commitment
      */
-    checkCommitment(type, actual, date = Utils.getTodayString(), excuse = null) {
+    checkCommitment(type, actual, date = Utils.getLogDateString(), excuse = null) {
         const commitments = StorageManager.getCommitments(date);
         if (!commitments) return null;
         
@@ -136,7 +136,7 @@ const CommitmentTracker = {
     /**
      * Calculate wake-up streak
      */
-    calculateWakeupStreak(endDate = Utils.getTodayString()) {
+    calculateWakeupStreak(endDate = Utils.getLogDateString()) {
         const allCommitments = StorageManager.getAllCommitments();
         const dates = Object.keys(allCommitments).sort().reverse();
         
@@ -184,7 +184,7 @@ const CommitmentTracker = {
     /**
      * Calculate weekly wake-up score
      */
-    calculateWeeklyScore(endDate = Utils.getTodayString()) {
+    calculateWeeklyScore(endDate = Utils.getLogDateString()) {
         const allCommitments = StorageManager.getAllCommitments();
         const end = new Date(endDate);
         const start = new Date(end);
@@ -253,7 +253,10 @@ const CommitmentTracker = {
 
     needsWeeklyReview() {
         const hour = new Date().getHours();
-        const day = new Date().getDay(); // 0 = Sunday
+        // Use log date to respect 5am boundary
+        const logDateStr = Utils.getLogDateString();
+        const logDate = new Date(logDateStr + 'T12:00:00'); // Use noon to avoid timezone issues
+        const day = logDate.getDay(); // 0 = Sunday
         const isReviewTime = day === 0 && (hour >= 20 || hour < 5);
         if (!isReviewTime) return false;
 

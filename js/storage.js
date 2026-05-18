@@ -154,7 +154,7 @@ const StorageManager = {
     /**
      * Get commitments for a specific date
      */
-    getCommitments(date = Utils.getTodayString()) {
+    getCommitments(date = Utils.getLogDateString()) {
         const allCommitments = this.load(STORAGE_KEYS.COMMITMENTS) || {};
         return allCommitments[date] || null;
     },
@@ -207,7 +207,7 @@ const StorageManager = {
     /**
      * Save last check-in date
      */
-    saveLastCheckin(date = Utils.getTodayString()) {
+    saveLastCheckin(date = Utils.getLogDateString()) {
         return this.save(STORAGE_KEYS.LAST_CHECKIN, date);
     },
 
@@ -221,7 +221,7 @@ const StorageManager = {
     /**
      * Save last evening check-in date
      */
-    saveLastEveningCheckin(date = Utils.getTodayString()) {
+    saveLastEveningCheckin(date = Utils.getLogDateString()) {
         return this.save(STORAGE_KEYS.LAST_EVENING_CHECKIN, date);
     },
 

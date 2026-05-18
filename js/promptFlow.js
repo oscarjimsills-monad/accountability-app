@@ -171,7 +171,7 @@ const PromptFlow = {
                 skippable: false,
                 render: (data) => {
                     const hour = new Date().getHours();
-                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const commitmentDate = Utils.getLogDateString();
                     const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const currentTime = new Date();
@@ -213,7 +213,7 @@ const PromptFlow = {
                 },
                 setupListeners: (data) => {
                     const hour = new Date().getHours();
-                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const commitmentDate = Utils.getLogDateString();
                     const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const actualInput = document.getElementById('actual-wakeup');
@@ -242,7 +242,7 @@ const PromptFlow = {
                     }
                     
                     const hour = new Date().getHours();
-                    const commitmentDate = hour < 5 ? Utils.getYesterdayString() : Utils.getTodayString();
+                    const commitmentDate = Utils.getLogDateString();
                     const today = StorageManager.getCommitments(commitmentDate);
                     const commitment = (today && today.wakeup && today.wakeup.commitment) ? today.wakeup.commitment : '07:00';
                     const minutesLate = Utils.timeDifferenceMinutes(commitment, actual);
@@ -302,7 +302,7 @@ const PromptFlow = {
                 name: 'accountability-message',
                 skippable: false,
                 render: (data) => {
-                    const today = Utils.getTodayString();
+                    const today = Utils.getLogDateString();
                     CommitmentTracker.checkCommitment('wakeup', data.actualWakeup, today, data.wakeupExcuse);
                     
                     const commitment = StorageManager.getCommitments(today);
@@ -567,7 +567,7 @@ const PromptFlow = {
                 name: 'obligations-review',
                 skippable: true,
                 render: (data) => {
-                    const logDate = StorageManager.getLastEveningCheckin();
+                    const logDate = Utils.getLogDateString();
                     const commitment = StorageManager.getCommitments(logDate);
                     const obligations = commitment?.obligations || [];
 
@@ -686,9 +686,29 @@ const PromptFlow = {
                         const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
                         const [wh, wm] = wakeupTime.split(':').map(Number);
                         
-                        // Load existing time entries for this day
+                        // Load existing time entries for this log day
+                        // Need to include entries from the next calendar day if they're before 5am
+                        const nextDay = new Date(logDate);
+                        nextDay.setDate(nextDay.getDate() + 1);
+                        const nextDayStr = Utils.getDateString(nextDay);
+                        
                         const existingEntries = TimeTracker.timeEntries.filter(entry => {
-                            return entry.date === logDate;
+                            // Include entries from the log date
+                            if (entry.date === logDate) {
+                                // But exclude entries before 5am (they belong to previous log day)
+                                const entryTime = new Date(entry.startTime);
+                                const entryHour = entryTime.getHours();
+                                return entryHour >= 5;
+                            }
+                            
+                            // Also include entries from next calendar day if before 5am
+                            if (entry.date === nextDayStr) {
+                                const entryTime = new Date(entry.startTime);
+                                const entryHour = entryTime.getHours();
+                                return entryHour < 5;
+                            }
+                            
+                            return false;
                         }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
                         
                         // Convert existing entries to sessions
@@ -749,15 +769,18 @@ const PromptFlow = {
                         endOfDayMinutes = currentHour * 60 + now.getMinutes();
                     }
                     
-                    const totalDayMinutes = endOfDayMinutes - wt.currentMinutes + (wt.currentMinutes > endOfDayMinutes ? 1440 : 0);
+                    // Calculate remaining time
+                    const remainingMinutes = Math.max(0, endOfDayMinutes - wt.currentMinutes);
+                    
                     const accountedMinutes = wt.sessions.reduce((sum, s) => sum + s.duration, 0);
+                    const totalDayMinutes = remainingMinutes + accountedMinutes;
                     const progressPct = totalDayMinutes > 0 ? Math.min(100, Math.round((accountedMinutes / totalDayMinutes) * 100)) : 0;
 
                     const currentTimeStr = `${String(Math.floor(wt.currentMinutes / 60) % 24).padStart(2, '0')}:${String(wt.currentMinutes % 60).padStart(2, '0')}`;
                     const formattedTime = Utils.formatTimeString(currentTimeStr);
 
-                    const remainingMinutes = endOfDayMinutes - wt.currentMinutes;
-                    const isComplete = remainingMinutes <= 0;
+                    // Day is complete when there's less than 1 minute remaining
+                    const isComplete = remainingMinutes < 1;
 
                     if (isComplete) {
                         return `
@@ -1429,7 +1452,7 @@ const PromptFlow = {
      */
     completeMorningFlow() {
         const yesterday = Utils.getYesterdayString();
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         
         // Save yesterday's bedtime if provided
         if (this.flowData.actualBedtime) {
@@ -1438,7 +1461,7 @@ const PromptFlow = {
         
         // Save mood if provided
         if (this.flowData.mood) {
-            const today = Utils.getTodayString();
+            const today = Utils.getLogDateString();
             const commitment = CommitmentTracker.getTodayCommitment() || CommitmentTracker.setCommitment('mood', this.flowData.mood, today);
             commitment.mood = this.flowData.mood;
             StorageManager.saveCommitments(today, commitment);
@@ -1505,16 +1528,15 @@ const PromptFlow = {
      * Complete evening flow
      */
     completeEveningFlow() {
-        // If it's past midnight but before 5am, the evening belongs to yesterday
-        const hour = new Date().getHours();
-        const eveningDate = (hour < 5) ? Utils.getYesterdayString() : Utils.getTodayString();
-
-        const tomorrow = new Date();
-        tomorrow.setDate(tomorrow.getDate() + (hour < 5 ? 0 : 1));
+        // Get the current log date (respects 5am boundary)
+        const logDate = Utils.getLogDateString();
+        
+        // Calculate tomorrow's log date (always one day after the current log date)
+        const tomorrow = new Date(logDate);
+        tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = Utils.getDateString(tomorrow);
 
         // Get today's incomplete obligations and carry them over
-        const logDate = Utils.getLogDateString();
         const todayCommitment = StorageManager.getCommitments(logDate);
         const incompleteObligations = (todayCommitment?.obligations || [])
             .filter(o => !o.completed)
@@ -1530,11 +1552,11 @@ const PromptFlow = {
 
         // Save commitments
         CommitmentTracker.setCommitment('wakeup', this.flowData.wakeupCommitment, tomorrowStr);
-        CommitmentTracker.setCommitment('bedtime', this.flowData.bedtimeCommitment, eveningDate);
+        CommitmentTracker.setCommitment('bedtime', this.flowData.bedtimeCommitment, logDate);
         CommitmentTracker.setCommitment('obligations', allObligations, tomorrowStr);
         CommitmentTracker.setCommitment('priorities', this.flowData.priorities || [], tomorrowStr);
 
-        // Save screentime to the evening's date, not necessarily today
+        // Save screentime to the current log date (respects 5am boundary)
         if (this.flowData.screentimeApps && this.flowData.screentimeApps.length > 0) {
             const totalMinutes = this.flowData.screentimeApps.reduce((sum, app) => sum + app.minutes, 0);
             const hours = Math.floor(totalMinutes / 60);
@@ -1543,13 +1565,24 @@ const PromptFlow = {
                 `${app.name} (${Math.floor(app.minutes / 60)}h ${app.minutes % 60}m)`
             ).join(', ');
 
-            ScreentimeTracker.addEntry(eveningDate, hours, minutes, appsList);
+            ScreentimeTracker.addEntry(logDate, hours, minutes, appsList);
         }
 
         // Mark evening check-in complete
         CommitmentTracker.completeEveningCheckin();
 
         Utils.showSuccess('Evening check-in complete! Sleep well! 😴');
+        this.goToDashboard();
+    },
+
+    /**
+     * Complete weekly review flow
+     */
+    completeWeeklyFlow() {
+        // Mark weekly review complete
+        CommitmentTracker.completeWeeklyReview();
+        
+        Utils.showSuccess('Weekly review complete! 🎉');
         this.goToDashboard();
     },
     /**
@@ -1598,7 +1631,7 @@ const PromptFlow = {
     },
 
     toggleEveningObligation(index) {
-        const logDate = StorageManager.getLastEveningCheckin();
+        const logDate = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(logDate);
         if (!commitment?.obligations?.[index]) return;
         commitment.obligations[index].completed = !commitment.obligations[index].completed;

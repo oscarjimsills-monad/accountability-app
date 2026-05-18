@@ -229,7 +229,7 @@ const ScreentimeGraph = {
         // Find dataset bounds
         const allDates = entries.map(e => e.date).sort();
         const dataStart = allDates[0];
-        const dataEnd   = allDates[allDates.length - 1] || Utils.getTodayString();
+        const dataEnd   = allDates[allDates.length - 1] || Utils.getLogDateString();
 
         // Window: last N days up to today
         const today = new Date();

@@ -59,18 +59,13 @@ const Utils = {
         return date.toISOString().split('T')[0];
     },
 
-    /**
-     * Get today's date string
-     */
-    getTodayString() {
-        return this.getDateString(new Date());
-    },
 
     /**
-     * Get yesterday's date string
+     * Get yesterday's date string (respects 5am day boundary)
      */
     getYesterdayString() {
-        const yesterday = new Date();
+        const logDate = this.getLogDateString();
+        const yesterday = new Date(logDate);
         yesterday.setDate(yesterday.getDate() - 1);
         return this.getDateString(yesterday);
     },
@@ -85,9 +80,17 @@ const Utils = {
         if (hour < 5) {
             const yesterday = new Date(now);
             yesterday.setDate(yesterday.getDate() - 1);
-            return this.getDateString(yesterday);
+            // Use local date formatting instead of UTC
+            const year = yesterday.getFullYear();
+            const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+            const day = String(yesterday.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
         }
-        return this.getDateString(now);
+        // Use local date formatting instead of UTC
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     },
     
     /**

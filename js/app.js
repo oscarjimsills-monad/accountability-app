@@ -238,7 +238,31 @@ const App = {
         console.log('Today:', today);
         const commitment = StorageManager.getCommitments(today);
         console.log('Commitment:', commitment);
-        const obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
+        
+        // Get obligations from today's commitment
+        let obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
+        
+        // If no obligations for today, check if there are incomplete obligations from yesterday
+        // that should have been carried over
+        if (obligations.length === 0) {
+            const yesterday = Utils.getYesterdayString();
+            const yesterdayCommitment = StorageManager.getCommitments(yesterday);
+            if (yesterdayCommitment && yesterdayCommitment.obligations) {
+                const incompleteFromYesterday = yesterdayCommitment.obligations.filter(o => !o.completed);
+                if (incompleteFromYesterday.length > 0) {
+                    // Carry them over to today
+                    obligations = incompleteFromYesterday.map(o => ({
+                        title: o.title,
+                        time: o.time,
+                        completed: false,
+                        carriedOver: true
+                    }));
+                    // Save them to today's commitment
+                    CommitmentTracker.setCommitment('obligations', obligations, today);
+                }
+            }
+        }
+        
         console.log('Obligations:', obligations);
         
         const pending = obligations.filter(o => !o.completed);
@@ -381,7 +405,7 @@ const App = {
         let filterObj = {};
         switch (filter) {
             case 'today':
-                filterObj = { date: Utils.getTodayString(), completed: false };
+                filterObj = { date: Utils.getLogDateString(), completed: false };
                 break;
             case 'pending':
                 filterObj = { completed: false };
@@ -929,7 +953,7 @@ const App = {
         const container = document.getElementById('main-content');
         const allCommitments = StorageManager.getAllCommitments();
         const existingDates = Object.keys(allCommitments).sort();
-        const firstDate = existingDates.length > 0 ? existingDates[0] : Utils.getTodayString();
+        const firstDate = existingDates.length > 0 ? existingDates[0] : Utils.getLogDateString();
         const dates = [];
         const [year, month, day] = firstDate.split('-').map(Number);
         for (let d = new Date(year, month - 1, day); d <= new Date(); d.setDate(d.getDate() + 1)) {
@@ -1087,6 +1111,40 @@ const App = {
                     </div>
                 ` : ''}
                 
+                <!-- Habits -->
+                ${(() => {
+                    const allHabits = HabitManager.getActiveHabits();
+                    if (allHabits.length === 0) return '';
+                    
+                    return `
+                        <div class="detail-section">
+                            <h2>✅ Habits</h2>
+                            <div class="habits-list">
+                                ${allHabits.map(habit => {
+                                    const completed = HabitManager.isCompleted(habit.id, date);
+                                    const streak = HabitManager.calculateStreak(habit.id);
+                                    return `
+                                        <div class="habit-detail-item ${completed ? 'completed' : 'incomplete'}">
+                                            <button class="habit-toggle-btn"
+                                                    onclick="App.toggleHistoricalHabit('${habit.id}', '${date}')"
+                                                    title="${completed ? 'Mark incomplete' : 'Mark complete'}">
+                                                ${completed ? '✓' : '○'}
+                                            </button>
+                                            <div class="habit-detail-info">
+                                                <div class="habit-detail-name">${Utils.escapeHtml(habit.name)}</div>
+                                                <div class="habit-detail-meta">
+                                                    <span class="habit-category-badge">${habit.category}</span>
+                                                    <span class="habit-streak">🔥 ${streak.current} day streak</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                })()}
+                
                 <!-- Screentime -->
                 ${screentimeEntry ? `
                     <div class="detail-section">
@@ -1096,12 +1154,29 @@ const App = {
                                 <span class="detail-label">Total:</span>
                                 <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
                             </div>
-                            ${screentimeEntry.notes ? `
+                            ${screentimeEntry.apps ? `
                                 <div class="detail-row">
                                     <span class="detail-label">Apps:</span>
+                                    <div class="apps-breakdown">
+                                        ${App.parseAppsString(screentimeEntry.apps).map(app => `
+                                            <div class="app-item">
+                                                <span class="app-name">${Utils.escapeHtml(app.name)}</span>
+                                                <span class="app-time">${app.time}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : screentimeEntry.notes ? `
+                                <div class="detail-row">
+                                    <span class="detail-label">Notes:</span>
                                     <span class="detail-value">${Utils.escapeHtml(screentimeEntry.notes)}</span>
                                 </div>
                             ` : ''}
+                            <div class="detail-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
+                                    ✏️ Edit Apps
+                                </button>
+                            </div>
                         </div>
                     </div>
                 ` : ''}
@@ -1176,6 +1251,263 @@ const App = {
                 ` : ''}
             </div>
         `;
+    },
+
+    /**
+     * Toggle habit completion for a historical date
+     */
+    toggleHistoricalHabit(habitId, date) {
+        const habit = HabitManager.toggleHabit(habitId, date);
+        if (habit) {
+            const isCompleted = HabitManager.isCompleted(habitId, date);
+            Utils.showSuccess(isCompleted ? 'Habit marked complete! 🎉' : 'Habit marked incomplete');
+            
+            // Refresh the day detail view to show updated streak
+            this.showDayDetail(date);
+        }
+    },
+
+    /**
+     * Parse apps string into array of app objects
+     * Format: "App1 (1h 30m), App2 (45m)"
+     */
+    parseAppsString(appsString) {
+        if (!appsString || appsString.trim() === '') return [];
+        
+        const apps = [];
+        const appParts = appsString.split(',').map(s => s.trim());
+        
+        for (const part of appParts) {
+            const match = part.match(/^(.+?)\s*\((.+?)\)$/);
+            if (match) {
+                apps.push({
+                    name: match[1].trim(),
+                    time: match[2].trim()
+                });
+            }
+        }
+        
+        return apps;
+    },
+
+    /**
+     * Convert apps array back to string format
+     */
+    appsArrayToString(appsArray) {
+        return appsArray
+            .filter(app => app.name && app.time)
+            .map(app => `${app.name} (${app.time})`)
+            .join(', ');
+    },
+
+    /**
+     * Parse time string to minutes (e.g., "1h 30m" -> 90)
+     */
+    parseTimeToMinutes(timeStr) {
+        let totalMinutes = 0;
+        const hourMatch = timeStr.match(/(\d+)\s*h/);
+        const minMatch = timeStr.match(/(\d+)\s*m/);
+        
+        if (hourMatch) totalMinutes += parseInt(hourMatch[1]) * 60;
+        if (minMatch) totalMinutes += parseInt(minMatch[1]);
+        
+        return totalMinutes;
+    },
+
+    /**
+     * Format minutes to time string (e.g., 90 -> "1h 30m")
+     */
+    formatMinutesToTime(minutes) {
+        const hours = Math.floor(minutes / 60);
+        const mins = minutes % 60;
+        
+        if (hours === 0) return `${mins}m`;
+        if (mins === 0) return `${hours}h`;
+        return `${hours}h ${mins}m`;
+    },
+
+    /**
+     * Show modal to edit screentime apps for a specific date
+     */
+    showEditScreentimeAppsModal(date) {
+        const entry = ScreentimeTracker.getEntry(date);
+        if (!entry) {
+            Utils.showError('No screentime entry found for this date');
+            return;
+        }
+
+        const apps = this.parseAppsString(entry.apps || '');
+        
+        const modal = document.getElementById('modal-container');
+        modal.innerHTML = `
+            <div class="modal-overlay" onclick="App.closeModal()">
+                <div class="modal-content modal-large" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>Edit Screentime Apps</h2>
+                        <button class="btn-close" onclick="App.closeModal()">✕</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="form-group">
+                            <label>Apps and Time</label>
+                            <div id="apps-list" class="apps-edit-list">
+                                ${apps.length > 0 ? apps.map((app, index) => `
+                                    <div class="app-edit-row" data-index="${index}">
+                                        <input type="text" class="input-text app-name-input" 
+                                               placeholder="App name" value="${Utils.escapeHtml(app.name)}">
+                                        <input type="text" class="input-text app-time-input" 
+                                               placeholder="e.g., 1h 30m" value="${Utils.escapeHtml(app.time)}">
+                                        <button class="btn-icon" onclick="App.removeAppRow(${index})" title="Remove">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                `).join('') : `
+                                    <div class="app-edit-row" data-index="0">
+                                        <input type="text" class="input-text app-name-input" 
+                                               placeholder="App name" value="">
+                                        <input type="text" class="input-text app-time-input" 
+                                               placeholder="e.g., 1h 30m" value="">
+                                        <button class="btn-icon" onclick="App.removeAppRow(0)" title="Remove">
+                                            🗑️
+                                        </button>
+                                    </div>
+                                `}
+                            </div>
+                            <button class="btn btn-secondary btn-sm" onclick="App.addAppRow()" style="margin-top: 10px;">
+                                + Add App
+                            </button>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label>Total Screentime</label>
+                            <div class="total-time-display" id="total-time-display">
+                                Calculating...
+                            </div>
+                        </div>
+                        
+                        <div class="modal-actions">
+                            <button type="button" class="btn btn-secondary" onclick="App.closeModal()">
+                                Cancel
+                            </button>
+                            <button type="button" class="btn btn-primary" onclick="App.saveScreentimeApps('${date}')">
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        modal.style.display = 'flex';
+        
+        // Add event listeners to recalculate total when inputs change
+        setTimeout(() => {
+            const inputs = modal.querySelectorAll('.app-time-input');
+            inputs.forEach(input => {
+                input.addEventListener('input', () => this.updateTotalTime());
+            });
+            this.updateTotalTime();
+        }, 100);
+    },
+
+    /**
+     * Add a new app row to the edit modal
+     */
+    addAppRow() {
+        const appsList = document.getElementById('apps-list');
+        const rows = appsList.querySelectorAll('.app-edit-row');
+        const newIndex = rows.length;
+        
+        const newRow = document.createElement('div');
+        newRow.className = 'app-edit-row';
+        newRow.dataset.index = newIndex;
+        newRow.innerHTML = `
+            <input type="text" class="input-text app-name-input" 
+                   placeholder="App name" value="">
+            <input type="text" class="input-text app-time-input" 
+                   placeholder="e.g., 1h 30m" value="">
+            <button class="btn-icon" onclick="App.removeAppRow(${newIndex})" title="Remove">
+                🗑️
+            </button>
+        `;
+        
+        appsList.appendChild(newRow);
+        
+        // Add event listener for the new time input
+        const timeInput = newRow.querySelector('.app-time-input');
+        timeInput.addEventListener('input', () => this.updateTotalTime());
+    },
+
+    /**
+     * Remove an app row from the edit modal
+     */
+    removeAppRow(index) {
+        const row = document.querySelector(`.app-edit-row[data-index="${index}"]`);
+        if (row) {
+            row.remove();
+            this.updateTotalTime();
+        }
+    },
+
+    /**
+     * Update the total time display in the modal
+     */
+    updateTotalTime() {
+        const timeInputs = document.querySelectorAll('.app-time-input');
+        let totalMinutes = 0;
+        
+        timeInputs.forEach(input => {
+            const value = input.value.trim();
+            if (value) {
+                totalMinutes += this.parseTimeToMinutes(value);
+            }
+        });
+        
+        const display = document.getElementById('total-time-display');
+        if (display) {
+            display.textContent = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m (${totalMinutes} minutes)`;
+        }
+    },
+
+    /**
+     * Save the edited screentime apps
+     */
+    saveScreentimeApps(date) {
+        const rows = document.querySelectorAll('.app-edit-row');
+        const apps = [];
+        let totalMinutes = 0;
+        
+        rows.forEach(row => {
+            const nameInput = row.querySelector('.app-name-input');
+            const timeInput = row.querySelector('.app-time-input');
+            
+            const name = nameInput.value.trim();
+            const time = timeInput.value.trim();
+            
+            if (name && time) {
+                apps.push({ name, time });
+                totalMinutes += this.parseTimeToMinutes(time);
+            }
+        });
+        
+        if (apps.length === 0) {
+            Utils.showError('Please add at least one app');
+            return;
+        }
+        
+        // Update the screentime entry
+        const entry = ScreentimeTracker.getEntry(date);
+        if (entry) {
+            entry.apps = this.appsArrayToString(apps);
+            entry.totalMinutes = totalMinutes;
+            entry.updatedAt = new Date().toISOString();
+            ScreentimeTracker.saveEntries();
+            
+            Utils.showSuccess('Screentime apps updated!');
+            this.closeModal();
+            this.showDayDetail(date);
+        } else {
+            Utils.showError('Failed to update screentime entry');
+        }
     },
 
     /**
@@ -1292,7 +1624,9 @@ const App = {
             const streakElement = document.getElementById('streak-indicator');
             
             if (dateElement) {
-                dateElement.textContent = Utils.formatDate(new Date(), 'long');
+                // Use log date instead of calendar date to respect 5am boundary
+                const logDate = Utils.getLogDateString();
+                dateElement.textContent = Utils.formatDate(logDate, 'long');
             }
             
             if (streakElement) {

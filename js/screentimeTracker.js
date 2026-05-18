@@ -33,7 +33,7 @@ const ScreentimeTracker = {
      */
     addEntry(date, hours, minutes, notes = '') {
         const totalMinutes = (hours * 60) + minutes;
-        const dateStr = date || Utils.getTodayString();
+        const dateStr = date || Utils.getLogDateString();
         
         // Check if entry exists for this date
         const existingIndex = this.entries.findIndex(e => e.date === dateStr);
@@ -107,7 +107,7 @@ const ScreentimeTracker = {
         
         return this.getEntriesInRange(
             Utils.getDateString(startDate),
-            Utils.getTodayString()
+            Utils.getLogDateString()
         );
     },
 
@@ -368,7 +368,7 @@ const ScreentimeTracker = {
         let lastDate = null;
         
         // Calculate current streak (from today backwards)
-        const today = Utils.getTodayString();
+        const today = Utils.getLogDateString();
         let checkDate = new Date();
         
         for (let i = 0; i < 365; i++) { // Check up to a year

@@ -31,7 +31,7 @@ const ReflectionManager = {
     /**
      * Add a new reflection
      */
-    addReflection(content, date = Utils.getTodayString()) {
+    addReflection(content, date = Utils.getLogDateString()) {
         const reflection = {
             id: Utils.generateId(),
             content: content,

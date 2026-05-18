@@ -35,14 +35,20 @@
             const now = new Date();
             const hour = now.getHours();
             
-            // Get log date (respects 5am boundary)
+            // Get log date (respects 5am boundary) - using local date
             let logDate;
             if (hour < 5) {
                 const yesterday = new Date(now);
                 yesterday.setDate(yesterday.getDate() - 1);
-                logDate = yesterday.toISOString().split('T')[0];
+                const year = yesterday.getFullYear();
+                const month = String(yesterday.getMonth() + 1).padStart(2, '0');
+                const day = String(yesterday.getDate()).padStart(2, '0');
+                logDate = `${year}-${month}-${day}`;
             } else {
-                logDate = now.toISOString().split('T')[0];
+                const year = now.getFullYear();
+                const month = String(now.getMonth() + 1).padStart(2, '0');
+                const day = String(now.getDate()).padStart(2, '0');
+                logDate = `${year}-${month}-${day}`;
             }
             
             const lastEveningCheckin = localStorage.getItem('accountability_lastEveningCheckin');

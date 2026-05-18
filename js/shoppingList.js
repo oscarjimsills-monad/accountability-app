@@ -138,7 +138,7 @@ const ShoppingListManager = {
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = `shopping-list-${Utils.getTodayString()}.json`;
+        a.download = `shopping-list-${Utils.getLogDateString()}.json`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
@@ -185,7 +185,7 @@ const ShoppingListManager = {
         
         const a = document.createElement('a');
         a.href = url;
-        a.download = `shopping-list-${Utils.getTodayString()}.txt`;
+        a.download = `shopping-list-${Utils.getLogDateString()}.txt`;
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);

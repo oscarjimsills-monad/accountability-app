@@ -37,7 +37,7 @@ const GoalManager = {
             title: goalData.title,
             description: goalData.description || '',
             category: goalData.category || 'personal',
-            startDate: goalData.startDate || Utils.getTodayString(),
+            startDate: goalData.startDate || Utils.getLogDateString(),
             targetDate: goalData.targetDate || null,
             milestones: goalData.milestones || [],
             progress: 0,

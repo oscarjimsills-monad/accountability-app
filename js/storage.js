@@ -16,17 +16,23 @@ const STORAGE_KEYS = {
     USER_NAME: 'accountability_userName',
     WEEKLY_REVIEWS: 'accountability_weeklyReviews',
     LAST_WEEKLY_REVIEW: 'accountability_lastWeeklyReview',
-    SHOPPING_LIST: 'accountability_shoppingList'
+    SHOPPING_LIST: 'accountability_shoppingList',
+    PENDING_WEEKLY_REVIEW: 'accountability_pendingWeeklyReview',
+    SCREENTIME: 'accountability_screentime'
 };
 
 const StorageManager = {
+    // Debounce timer for Supabase sync
+    _syncTimer: null,
+
     /**
-     * Save data to localStorage
+     * Save data to localStorage, then schedule a background Supabase sync
      */
     save(key, data) {
         try {
             const serialized = JSON.stringify(data);
             localStorage.setItem(key, serialized);
+            this.scheduleSyncToSupabase();
             return true;
         } catch (error) {
             console.error('Storage save error:', error);
@@ -35,6 +41,82 @@ const StorageManager = {
             } else {
                 Utils.showError('Failed to save data.');
             }
+            return false;
+        }
+    },
+
+    /**
+     * Schedule a debounced sync to Supabase (fires 2s after last save)
+     */
+    scheduleSyncToSupabase() {
+        if (this._syncTimer) clearTimeout(this._syncTimer);
+        this._syncTimer = setTimeout(() => {
+            this.syncToSupabase();
+        }, 2000);
+    },
+
+    /**
+     * Push all localStorage data to Supabase for the current user
+     */
+    async syncToSupabase() {
+        try {
+            if (!window.AuthManager?.isAuthenticated()) return;
+            const user = AuthManager.getUser();
+
+            // Collect every accountability_ key into one object
+            const data = {};
+            Object.values(STORAGE_KEYS).forEach(key => {
+                const raw = localStorage.getItem(key);
+                if (raw) {
+                    try { data[key] = JSON.parse(raw); }
+                    catch (e) { data[key] = raw; }
+                }
+            });
+
+            const { error } = await SupabaseClient
+                .from('user_data')
+                .upsert({
+                    user_id: user.id,
+                    data: data,
+                    updated_at: new Date().toISOString()
+                }, { onConflict: 'user_id' });
+
+            if (error) console.error('Supabase sync error:', error);
+        } catch (error) {
+            console.error('Supabase sync error:', error);
+        }
+    },
+
+    /**
+     * Pull data from Supabase and write it into localStorage
+     * Called once on app load — Supabase is source of truth
+     */
+    async loadFromSupabase() {
+        try {
+            if (!window.AuthManager?.isAuthenticated()) return false;
+            const user = AuthManager.getUser();
+
+            const { data, error } = await SupabaseClient
+                .from('user_data')
+                .select('data')
+                .eq('user_id', user.id)
+                .single();
+
+            // PGRST116 = no row yet (first login) — that's fine
+            if (error && error.code !== 'PGRST116') {
+                console.error('Supabase load error:', error);
+                return false;
+            }
+
+            if (data?.data) {
+                Object.entries(data.data).forEach(([key, value]) => {
+                    localStorage.setItem(key, JSON.stringify(value));
+                });
+            }
+
+            return true;
+        } catch (error) {
+            console.error('Supabase load error:', error);
             return false;
         }
     },
@@ -185,7 +267,8 @@ const StorageManager = {
             startOfWeek: 0, // Sunday
             dateFormat: 'MM/DD/YYYY',
             timeFormat: '12h',
-            gracePeriodMinutes: 15
+            gracePeriodMinutes: 15,
+            screentimeGoalMinutes: 90
         };
         return { ...defaults, ...this.load(STORAGE_KEYS.SETTINGS) };
     },
@@ -255,7 +338,10 @@ const StorageManager = {
                 commitments: this.getAllCommitments(),
                 settings: this.getSettings(),
                 userName: this.getUserName(),
-                shoppingList: this.getShoppingList()
+                shoppingList: this.getShoppingList(),
+                screentime: this.load(STORAGE_KEYS.SCREENTIME) || [],
+                weeklyReviews: this.getWeeklyReviews(),
+                lastWeeklyReview: this.getLastWeeklyReview()
             }
         };
         return data;
@@ -270,7 +356,7 @@ const StorageManager = {
                 throw new Error('Invalid data format');
             }
 
-            const { tasks, habits, goals, timeEntries, reflections, commitments, settings, userName, shoppingList } = data.data;
+            const { tasks, habits, goals, timeEntries, reflections, commitments, settings, userName, shoppingList, screentime, weeklyReviews, lastWeeklyReview } = data.data;
 
             if (tasks) this.saveTasks(tasks);
             if (habits) this.saveHabits(habits);
@@ -281,6 +367,9 @@ const StorageManager = {
             if (settings) this.saveSettings(settings);
             if (userName) this.saveUserName(userName);
             if (shoppingList) this.saveShoppingList(shoppingList);
+            if (screentime) this.save(STORAGE_KEYS.SCREENTIME, screentime);
+            if (weeklyReviews) this.save(STORAGE_KEYS.WEEKLY_REVIEWS, weeklyReviews);
+            if (lastWeeklyReview) this.save(STORAGE_KEYS.LAST_WEEKLY_REVIEW, lastWeeklyReview);
 
             return true;
         } catch (error) {
@@ -345,6 +434,18 @@ const StorageManager = {
 
     saveLastWeeklyReview(weekKey) {
         return this.save(STORAGE_KEYS.LAST_WEEKLY_REVIEW, weekKey);
+    },
+
+    getPendingWeeklyReview() {
+        return this.load(STORAGE_KEYS.PENDING_WEEKLY_REVIEW);
+    },
+
+    savePendingWeeklyReview(weekKey) {
+        return this.save(STORAGE_KEYS.PENDING_WEEKLY_REVIEW, weekKey);
+    },
+
+    clearPendingWeeklyReview() {
+        return this.remove(STORAGE_KEYS.PENDING_WEEKLY_REVIEW);
     },
 
     /**

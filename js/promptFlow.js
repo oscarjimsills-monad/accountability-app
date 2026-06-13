@@ -41,8 +41,6 @@ const PromptFlow = {
         // Determine which flow to show
         if (CommitmentTracker.needsMorningCheckin()) {
             this.startMorningFlow();
-        } else if (CommitmentTracker.needsWeeklyReview()) {
-            this.startWeeklyReview();
         } else if (CommitmentTracker.needsEveningCheckin()) {
             this.startEveningFlow();
         } else {
@@ -401,7 +399,9 @@ const PromptFlow = {
                 name: 'weekly-stats',
                 skippable: false,
                 render: (data) => {
-                    const weekKey = CommitmentTracker.getWeekKey();
+                    // Use the pending review week key so the stats reflect the right week
+                    const pendingKey = CommitmentTracker.getPendingWeeklyReviewKey();
+                    const weekKey = pendingKey || CommitmentTracker.getWeekKey();
                     const allCommitments = StorageManager.getAllCommitments();
                     const wakeupStreak = CommitmentTracker.calculateWakeupStreak();
                     const weeklyScore = CommitmentTracker.calculateWeeklyScore();
@@ -427,10 +427,29 @@ const PromptFlow = {
                         ? (weekEntries.filter(e => e.focusRating).reduce((sum, e) => sum + e.focusRating, 0) / weekEntries.filter(e => e.focusRating).length).toFixed(1)
                         : null;
 
+                    // Previous week's goals
+                    const prevWeekKey = Utils.getDateString(new Date(new Date(weekKey).setDate(new Date(weekKey).getDate() - 7)));
+                    const prevReview = StorageManager.getWeeklyReviews()[prevWeekKey];
+                    const prevGoals = prevReview?.goals || [];
+
                     return `
                         <div class="prompt-screen weekly-stats">
                             <h2>📅 Weekly Review</h2>
                             <p class="subtitle">Here's how your week looked.</p>
+
+                            ${prevGoals.length > 0 ? `
+                                <div class="prev-goals-review">
+                                    <h3>🎯 Last Week's Goals</h3>
+                                    <div class="prev-goals-list">
+                                        ${prevGoals.map(g => `
+                                            <div class="prev-goal-item ${g.completed ? 'completed' : 'incomplete'}">
+                                                <span class="prev-goal-status">${g.completed ? '✅' : '❌'}</span>
+                                                <span class="prev-goal-title">${Utils.escapeHtml(g.title)}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : ''}
 
                             <div class="weekly-stats-grid">
                                 <div class="weekly-stat">
@@ -1135,11 +1154,11 @@ const PromptFlow = {
                     if (!data.screentimeApps) {
                         data.screentimeApps = [];
                     }
-                    
+
                     const totalMinutes = data.screentimeApps.reduce((sum, app) => sum + app.minutes, 0);
                     const totalHours = Math.floor(totalMinutes / 60);
                     const remainingMinutes = totalMinutes % 60;
-                    const dailyGoal = 90;
+                    const dailyGoal = StorageManager.getSettings().screentimeGoalMinutes || 90;
                     const isOverGoal = totalMinutes > dailyGoal;
                     
                     return `
@@ -1213,7 +1232,7 @@ const PromptFlow = {
                             `}
                             
                             <div class="daily-goal-info">
-                                <p>Daily Goal: 1.5 hours (90 minutes)</p>
+                                <p>Daily Goal: ${Math.floor(dailyGoal/60)}h${dailyGoal%60>0?` ${dailyGoal%60}m`:''} (${dailyGoal} minutes)</p>
                             </div>
                         </div>
                     `;
@@ -1536,19 +1555,9 @@ const PromptFlow = {
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = Utils.getDateString(tomorrow);
 
-        // Get today's incomplete obligations and carry them over
-        const todayCommitment = StorageManager.getCommitments(logDate);
-        const incompleteObligations = (todayCommitment?.obligations || [])
-            .filter(o => !o.completed)
-            .map(o => ({
-                title: o.title,
-                time: o.time,
-                completed: false
-            }));
-        
-        // Merge incomplete obligations with new ones
-        const newObligations = this.flowData.obligations || [];
-        const allObligations = [...incompleteObligations, ...newObligations];
+        // data.obligations already contains carried-over incomplete ones (loaded in setupListeners)
+        // plus any new ones the user added — use it directly, no need to merge again
+        const allObligations = this.flowData.obligations || [];
 
         // Save commitments
         CommitmentTracker.setCommitment('wakeup', this.flowData.wakeupCommitment, tomorrowStr);
@@ -1579,9 +1588,21 @@ const PromptFlow = {
      * Complete weekly review flow
      */
     completeWeeklyFlow() {
-        // Mark weekly review complete
+        // Save goals and reflection into the weekly reviews store
+        const pendingKey = CommitmentTracker.getPendingWeeklyReviewKey();
+        const weekKey = pendingKey || CommitmentTracker.getWeekKey();
+        const review = {
+            weekKey,
+            completedAt: new Date().toISOString(),
+            goals: this.flowData.weeklyGoals || [],
+            wins: this.flowData.weeklyWins || '',
+            struggles: this.flowData.weeklyStruggles || ''
+        };
+        StorageManager.saveWeeklyReview(weekKey, review);
+
+        // Mark weekly review complete (clears pending key)
         CommitmentTracker.completeWeeklyReview();
-        
+
         Utils.showSuccess('Weekly review complete! 🎉');
         this.goToDashboard();
     },

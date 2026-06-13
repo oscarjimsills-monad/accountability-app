@@ -14,8 +14,21 @@ const App = {
         if (this.initialized) return;
 
         try {
-            // Show loading screen
+            // Show loading screen immediately
             this.showLoading();
+
+            // Initialise auth — redirect to sign-in screen if not logged in
+            const user = await AuthManager.init();
+            if (!user) {
+                this.hideLoading();
+                this.showAuthScreen();
+                return;
+            }
+            // Pull latest data from Supabase (source of truth on load)
+            await StorageManager.loadFromSupabase();
+
+            // Apply saved theme before anything renders
+            this.applyTheme(StorageManager.getSettings().theme || 'light');
 
             // Check storage availability
             if (!StorageManager.isAvailable()) {
@@ -40,11 +53,11 @@ const App = {
             // Setup event listeners
             this.setupEventListeners();
 
-            // Update header info
+            // Update header info (includes user name/avatar)
             this.updateHeader();
 
             // Hide loading and show app
-            await Utils.sleep(500); // Brief delay for smooth transition
+            await Utils.sleep(500);
             this.hideLoading();
 
             // Start appropriate flow
@@ -58,6 +71,16 @@ const App = {
     },
 
     /**
+     * Show the auth / login screen
+     */
+    showAuthScreen() {
+        const authScreen = document.getElementById('auth-screen');
+        const appContainer = document.getElementById('app');
+        if (authScreen) authScreen.style.display = 'flex';
+        if (appContainer) appContainer.style.display = 'none';
+    },
+
+    /**
      * Start the application flow
      */
     startApp() {
@@ -66,11 +89,7 @@ const App = {
         const mainApp = document.getElementById('main-app');
         
         // Check if check-in is needed
-        if (CommitmentTracker.needsWeeklyReview()) {
-            if (promptContainer) promptContainer.style.display = 'block';
-            if (mainApp) mainApp.style.display = 'none';
-            PromptFlow.startWeeklyReview();
-        } else if (CommitmentTracker.needsMorningCheckin() || CommitmentTracker.needsEveningCheckin()) {
+        if (CommitmentTracker.needsMorningCheckin() || CommitmentTracker.needsEveningCheckin()) {
             if (promptContainer) promptContainer.style.display = 'block';
             if (mainApp) mainApp.style.display = 'none';
             PromptFlow.startCheckIn();
@@ -127,6 +146,18 @@ const App = {
             exportBtn.addEventListener('click', () => {
                 DataManager.exportData();
             });
+        }
+
+        // Theme toggle
+        const themeBtn = document.getElementById('theme-toggle-btn');
+        if (themeBtn) {
+            themeBtn.addEventListener('click', () => this.toggleTheme());
+        }
+
+        // Sign out
+        const signOutBtn = document.getElementById('sign-out-btn');
+        if (signOutBtn) {
+            signOutBtn.addEventListener('click', () => AuthManager.signOut());
         }
 
         // Timer update interval
@@ -613,7 +644,7 @@ const App = {
         const todayEntry = ScreentimeTracker.getTodayEntry();
         const analysis = ScreentimeTracker.analyzePatterns(30);
         const stats = ScreentimeTracker.getStats(7);
-        const dailyGoal = 90; // 1.5 hours in minutes
+        const dailyGoal = StorageManager.getSettings().screentimeGoalMinutes || 90;
         const todayMinutes = todayEntry ? todayEntry.totalMinutes : 0;
         const isOverGoal = todayMinutes > dailyGoal;
         const remainingMinutes = Math.max(0, dailyGoal - todayMinutes);
@@ -640,7 +671,7 @@ const App = {
             <div class="view-header">
                 <h1>📱 Social Media & Games Tracker</h1>
                 <div class="daily-goal-badge ${isOverGoal ? 'over-goal' : 'under-goal'}">
-                    Goal: 1.5h/day
+                    Goal: ${Math.floor(dailyGoal/60)}h${dailyGoal%60 > 0 ? ` ${dailyGoal%60}m` : ''}/day
                 </div>
             </div>
             
@@ -1113,7 +1144,10 @@ const App = {
                 
                 <!-- Habits -->
                 ${(() => {
-                    const allHabits = HabitManager.getActiveHabits();
+                    const allHabits = HabitManager.getActiveHabits().filter(h => {
+                        const created = Utils.getDateString(new Date(h.createdAt));
+                        return created <= date;
+                    });
                     if (allHabits.length === 0) return '';
                     
                     return `
@@ -1154,22 +1188,17 @@ const App = {
                                 <span class="detail-label">Total:</span>
                                 <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
                             </div>
-                            ${screentimeEntry.apps ? `
+                            ${screentimeEntry.notes ? `
                                 <div class="detail-row">
                                     <span class="detail-label">Apps:</span>
                                     <div class="apps-breakdown">
-                                        ${App.parseAppsString(screentimeEntry.apps).map(app => `
+                                        ${App.parseAppsString(screentimeEntry.notes).map(app => `
                                             <div class="app-item">
                                                 <span class="app-name">${Utils.escapeHtml(app.name)}</span>
                                                 <span class="app-time">${app.time}</span>
                                             </div>
                                         `).join('')}
                                     </div>
-                                </div>
-                            ` : screentimeEntry.notes ? `
-                                <div class="detail-row">
-                                    <span class="detail-label">Notes:</span>
-                                    <span class="detail-value">${Utils.escapeHtml(screentimeEntry.notes)}</span>
                                 </div>
                             ` : ''}
                             <div class="detail-actions">
@@ -1327,187 +1356,134 @@ const App = {
     },
 
     /**
-     * Show modal to edit screentime apps for a specific date
+     * Temporary apps list for the edit-date modal (separate from tempScreentimeApps)
+     */
+    tempEditApps: [],
+    tempEditDate: null,
+
+    /**
+     * Show modal to edit screentime apps for a specific date — same UX as the daily screen
      */
     showEditScreentimeAppsModal(date) {
         const entry = ScreentimeTracker.getEntry(date);
-        if (!entry) {
-            Utils.showError('No screentime entry found for this date');
-            return;
+        this.tempEditDate = date;
+
+        // Pre-populate from existing entry (apps are stored in the notes field)
+        if (entry && entry.notes) {
+            const parsed = this.parseAppsString(entry.notes);
+            this.tempEditApps = parsed.map(app => ({
+                name: app.name,
+                minutes: this.parseTimeToMinutes(app.time)
+            }));
+        } else {
+            this.tempEditApps = [];
         }
 
-        const apps = this.parseAppsString(entry.apps || '');
-        
         const modal = document.getElementById('modal-container');
         modal.innerHTML = `
             <div class="modal-overlay" onclick="App.closeModal()">
                 <div class="modal-content modal-large" onclick="event.stopPropagation()">
                     <div class="modal-header">
-                        <h2>Edit Screentime Apps</h2>
+                        <h2>Edit Screentime Apps — ${Utils.formatDate(date, 'long')}</h2>
                         <button class="btn-close" onclick="App.closeModal()">✕</button>
                     </div>
                     <div class="modal-body">
-                        <div class="form-group">
-                            <label>Apps and Time</label>
-                            <div id="apps-list" class="apps-edit-list">
-                                ${apps.length > 0 ? apps.map((app, index) => `
-                                    <div class="app-edit-row" data-index="${index}">
-                                        <input type="text" class="input-text app-name-input" 
-                                               placeholder="App name" value="${Utils.escapeHtml(app.name)}">
-                                        <input type="text" class="input-text app-time-input" 
-                                               placeholder="e.g., 1h 30m" value="${Utils.escapeHtml(app.time)}">
-                                        <button class="btn-icon" onclick="App.removeAppRow(${index})" title="Remove">
-                                            🗑️
-                                        </button>
-                                    </div>
-                                `).join('') : `
-                                    <div class="app-edit-row" data-index="0">
-                                        <input type="text" class="input-text app-name-input" 
-                                               placeholder="App name" value="">
-                                        <input type="text" class="input-text app-time-input" 
-                                               placeholder="e.g., 1h 30m" value="">
-                                        <button class="btn-icon" onclick="App.removeAppRow(0)" title="Remove">
-                                            🗑️
-                                        </button>
-                                    </div>
-                                `}
+                        <div class="add-app-form">
+                            <h3>Add App</h3>
+                            <div class="form-row">
+                                <div class="form-group" style="flex: 2;">
+                                    <label for="edit-app-name-input">App Name</label>
+                                    <input type="text" id="edit-app-name-input" class="input-text"
+                                           placeholder="e.g., Instagram, TikTok...">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-app-hours-input">Hours</label>
+                                    <input type="number" id="edit-app-hours-input" class="input-number"
+                                           min="0" max="24" value="0">
+                                </div>
+                                <div class="form-group">
+                                    <label for="edit-app-minutes-input">Minutes</label>
+                                    <input type="number" id="edit-app-minutes-input" class="input-number"
+                                           min="0" max="59" value="0">
+                                </div>
                             </div>
-                            <button class="btn btn-secondary btn-sm" onclick="App.addAppRow()" style="margin-top: 10px;">
+                            <button type="button" class="btn btn-secondary" onclick="App.addEditApp()">
                                 + Add App
                             </button>
                         </div>
-                        
-                        <div class="form-group">
-                            <label>Total Screentime</label>
-                            <div class="total-time-display" id="total-time-display">
-                                Calculating...
-                            </div>
-                        </div>
-                        
-                        <div class="modal-actions">
-                            <button type="button" class="btn btn-secondary" onclick="App.closeModal()">
-                                Cancel
-                            </button>
-                            <button type="button" class="btn btn-primary" onclick="App.saveScreentimeApps('${date}')">
-                                Save Changes
-                            </button>
+
+                        <div id="edit-apps-list"></div>
+
+                        <div class="modal-actions" style="margin-top: 1rem;">
+                            <button type="button" class="btn btn-secondary" onclick="App.closeModal()">Cancel</button>
+                            <button type="button" class="btn btn-primary" onclick="App.saveEditedScreentimeApps()">Save Changes</button>
                         </div>
                     </div>
                 </div>
             </div>
         `;
-        
         modal.style.display = 'flex';
-        
-        // Add event listeners to recalculate total when inputs change
-        setTimeout(() => {
-            const inputs = modal.querySelectorAll('.app-time-input');
-            inputs.forEach(input => {
-                input.addEventListener('input', () => this.updateTotalTime());
-            });
-            this.updateTotalTime();
-        }, 100);
+        setTimeout(() => this.renderEditAppsList(), 0);
     },
 
-    /**
-     * Add a new app row to the edit modal
-     */
-    addAppRow() {
-        const appsList = document.getElementById('apps-list');
-        const rows = appsList.querySelectorAll('.app-edit-row');
-        const newIndex = rows.length;
-        
-        const newRow = document.createElement('div');
-        newRow.className = 'app-edit-row';
-        newRow.dataset.index = newIndex;
-        newRow.innerHTML = `
-            <input type="text" class="input-text app-name-input" 
-                   placeholder="App name" value="">
-            <input type="text" class="input-text app-time-input" 
-                   placeholder="e.g., 1h 30m" value="">
-            <button class="btn-icon" onclick="App.removeAppRow(${newIndex})" title="Remove">
-                🗑️
-            </button>
-        `;
-        
-        appsList.appendChild(newRow);
-        
-        // Add event listener for the new time input
-        const timeInput = newRow.querySelector('.app-time-input');
-        timeInput.addEventListener('input', () => this.updateTotalTime());
-    },
-
-    /**
-     * Remove an app row from the edit modal
-     */
-    removeAppRow(index) {
-        const row = document.querySelector(`.app-edit-row[data-index="${index}"]`);
-        if (row) {
-            row.remove();
-            this.updateTotalTime();
-        }
-    },
-
-    /**
-     * Update the total time display in the modal
-     */
-    updateTotalTime() {
-        const timeInputs = document.querySelectorAll('.app-time-input');
-        let totalMinutes = 0;
-        
-        timeInputs.forEach(input => {
-            const value = input.value.trim();
-            if (value) {
-                totalMinutes += this.parseTimeToMinutes(value);
-            }
-        });
-        
-        const display = document.getElementById('total-time-display');
-        if (display) {
-            display.textContent = `${Math.floor(totalMinutes / 60)}h ${totalMinutes % 60}m (${totalMinutes} minutes)`;
-        }
-    },
-
-    /**
-     * Save the edited screentime apps
-     */
-    saveScreentimeApps(date) {
-        const rows = document.querySelectorAll('.app-edit-row');
-        const apps = [];
-        let totalMinutes = 0;
-        
-        rows.forEach(row => {
-            const nameInput = row.querySelector('.app-name-input');
-            const timeInput = row.querySelector('.app-time-input');
-            
-            const name = nameInput.value.trim();
-            const time = timeInput.value.trim();
-            
-            if (name && time) {
-                apps.push({ name, time });
-                totalMinutes += this.parseTimeToMinutes(time);
-            }
-        });
-        
-        if (apps.length === 0) {
-            Utils.showError('Please add at least one app');
+    renderEditAppsList() {
+        const container = document.getElementById('edit-apps-list');
+        if (!container) return;
+        if (this.tempEditApps.length === 0) {
+            container.innerHTML = '<div class="empty-apps"><p>No apps added yet.</p></div>';
             return;
         }
-        
-        // Update the screentime entry
-        const entry = ScreentimeTracker.getEntry(date);
-        if (entry) {
-            entry.apps = this.appsArrayToString(apps);
-            entry.totalMinutes = totalMinutes;
-            entry.updatedAt = new Date().toISOString();
-            ScreentimeTracker.saveEntries();
-            
-            Utils.showSuccess('Screentime apps updated!');
-            this.closeModal();
-            this.showDayDetail(date);
-        } else {
-            Utils.showError('Failed to update screentime entry');
-        }
+        const total = this.tempEditApps.reduce((s, a) => s + a.minutes, 0);
+        container.innerHTML = `
+            <div class="apps-list">
+                <h3>Apps (${Math.floor(total/60)}h ${total%60}m total)</h3>
+                ${this.tempEditApps.map((app, i) => `
+                    <div class="app-item">
+                        <div class="app-info">
+                            <span class="app-name">${Utils.escapeHtml(app.name)}</span>
+                            <span class="app-time">${Math.floor(app.minutes/60)}h ${app.minutes%60}m</span>
+                        </div>
+                        <button type="button" class="btn-icon" onclick="App.removeEditApp(${i})">🗑️</button>
+                    </div>
+                `).join('')}
+            </div>
+        `;
+    },
+
+    addEditApp() {
+        const name = document.getElementById('edit-app-name-input').value.trim();
+        const hours = parseInt(document.getElementById('edit-app-hours-input').value) || 0;
+        const minutes = parseInt(document.getElementById('edit-app-minutes-input').value) || 0;
+        if (!name) { Utils.showError('Please enter an app name'); return; }
+        if (hours === 0 && minutes === 0) { Utils.showError('Please enter a time'); return; }
+        this.tempEditApps.push({ name, minutes: hours * 60 + minutes });
+        document.getElementById('edit-app-name-input').value = '';
+        document.getElementById('edit-app-hours-input').value = '0';
+        document.getElementById('edit-app-minutes-input').value = '0';
+        this.renderEditAppsList();
+        Utils.showSuccess(`Added ${name}`);
+    },
+
+    removeEditApp(index) {
+        this.tempEditApps.splice(index, 1);
+        this.renderEditAppsList();
+    },
+
+    saveEditedScreentimeApps() {
+        const date = this.tempEditDate;
+        if (!date) return;
+        if (this.tempEditApps.length === 0) { Utils.showError('Please add at least one app'); return; }
+        const totalMinutes = this.tempEditApps.reduce((s, a) => s + a.minutes, 0);
+        const hours = Math.floor(totalMinutes / 60);
+        const mins = totalMinutes % 60;
+        const appsList = this.tempEditApps.map(a =>
+            `${a.name} (${Math.floor(a.minutes/60)}h ${a.minutes%60}m)`).join(', ');
+        ScreentimeTracker.addEntry(date, hours, mins, appsList);
+        this.tempEditApps = [];
+        this.tempEditDate = null;
+        Utils.showSuccess('Screentime updated!');
+        this.closeModal();
+        this.showDayDetail(date);
     },
 
     /**
@@ -1622,16 +1598,29 @@ const App = {
         try {
             const dateElement = document.getElementById('current-date');
             const streakElement = document.getElementById('streak-indicator');
-            
+            const userNameEl = document.getElementById('sidebar-user-name');
+            const userAvatarEl = document.getElementById('sidebar-user-avatar');
+
             if (dateElement) {
-                // Use log date instead of calendar date to respect 5am boundary
                 const logDate = Utils.getLogDateString();
                 dateElement.textContent = Utils.formatDate(logDate, 'long');
             }
-            
+
             if (streakElement) {
                 const stats = CommitmentTracker.getStats();
                 streakElement.textContent = `🔥 ${stats.currentStreak}`;
+            }
+
+            if (userNameEl) {
+                userNameEl.textContent = AuthManager.getDisplayName();
+            }
+
+            if (userAvatarEl) {
+                const avatarUrl = AuthManager.getAvatarUrl();
+                if (avatarUrl) {
+                    userAvatarEl.style.backgroundImage = `url(${avatarUrl})`;
+                    userAvatarEl.style.display = 'block';
+                }
             }
         } catch (error) {
             console.error('Error updating header:', error);
@@ -1901,6 +1890,26 @@ deleteTimeEntry(entryId, date) {
     TimeTracker.saveTimeEntries();
     Utils.showSuccess('Entry deleted!');
     this.showDayDetail(date);
+},
+
+applyTheme(theme) {
+    document.documentElement.setAttribute('data-theme', theme);
+    const btn = document.getElementById('theme-toggle-btn');
+    if (btn) {
+        btn.textContent = theme === 'dark' ? '☀️ Light Mode' : '🌙 Dark Mode';
+    }
+},
+
+toggleTheme() {
+    const current = StorageManager.getSettings().theme || 'light';
+    const next = current === 'dark' ? 'light' : 'dark';
+    const settings = StorageManager.getSettings();
+    settings.theme = next;
+    StorageManager.saveSettings(settings);
+    this.applyTheme(next);
+    if (this.currentView === 'settings') {
+        DataManager.renderSettings();
+    }
 },
 
 /**

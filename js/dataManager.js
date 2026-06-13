@@ -55,12 +55,16 @@ const DataManager = {
                     
                     // Import data
                     const success = StorageManager.importAll(data);
-                    
+
                     if (success) {
-                        Utils.showSuccess('Data imported successfully! Reloading...');
-                        setTimeout(() => {
+                        Utils.showSuccess('Data imported successfully! Syncing...');
+                        // Sync to Supabase immediately before reloading so the
+                        // reload doesn't pull stale Supabase data back over the import
+                        StorageManager.syncToSupabase().then(() => {
                             window.location.reload();
-                        }, 1500);
+                        }).catch(() => {
+                            window.location.reload();
+                        });
                         resolve(true);
                     } else {
                         throw new Error('Import failed');
@@ -152,8 +156,14 @@ const DataManager = {
                     <h2>User</h2>
                     <div class="form-group">
                         <label for="user-name">Your Name</label>
-                        <input type="text" id="user-name" class="input-text" value="${Utils.escapeHtml(userName)}" 
+                        <input type="text" id="user-name" class="input-text" value="${Utils.escapeHtml(userName)}"
                                onchange="DataManager.updateUserName(this.value)">
+                    </div>
+                    <div class="form-group">
+                        <label>Appearance</label>
+                        <button class="btn btn-secondary" onclick="App.toggleTheme()">
+                            ${settings.theme === 'dark' ? '☀️ Switch to Light Mode' : '🌙 Switch to Dark Mode'}
+                        </button>
                     </div>
                 </div>
 
@@ -162,10 +172,17 @@ const DataManager = {
                     <h2>Accountability</h2>
                     <div class="form-group">
                         <label for="grace-period">Wake-up Grace Period (minutes)</label>
-                        <input type="number" id="grace-period" class="input-number" 
+                        <input type="number" id="grace-period" class="input-number"
                                value="${settings.gracePeriodMinutes}" min="0" max="60"
                                onchange="DataManager.updateGracePeriod(this.value)">
                         <p class="help-text">You won't be marked late if you wake up within this time</p>
+                    </div>
+                    <div class="form-group">
+                        <label for="screentime-goal">Daily Screentime Goal (minutes)</label>
+                        <input type="number" id="screentime-goal" class="input-number"
+                               value="${settings.screentimeGoalMinutes || 90}" min="0" max="1440"
+                               onchange="DataManager.updateScreentimeGoal(this.value)">
+                        <p class="help-text">Max daily social media &amp; games time (default: 90 min = 1.5h)</p>
                     </div>
                 </div>
 
@@ -230,6 +247,13 @@ const DataManager = {
         settings.gracePeriodMinutes = parseInt(minutes) || 15;
         StorageManager.saveSettings(settings);
         Utils.showSuccess('Grace period updated!');
+    },
+
+    updateScreentimeGoal(minutes) {
+        const settings = StorageManager.getSettings();
+        settings.screentimeGoalMinutes = parseInt(minutes) || 90;
+        StorageManager.saveSettings(settings);
+        Utils.showSuccess('Screentime goal updated!');
     }
 };
 

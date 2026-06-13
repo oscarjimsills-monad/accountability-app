@@ -14,6 +14,9 @@ const Dashboard = {
             return;
         }
 
+        // Set pending weekly review if it's Sunday
+        CommitmentTracker.checkAndSetPendingWeeklyReview();
+
         const stats = this.getOverallStats();
         const commitmentStats = CommitmentTracker.getStats();
         const todayCommitment = CommitmentTracker.getTodayCommitment();
@@ -24,6 +27,27 @@ const Dashboard = {
                 <div class="dashboard-header">
                     <h1>Dashboard</h1>
                     <p class="dashboard-date">${Utils.formatDate(new Date(Utils.getLogDateString()), 'long')}</p>
+                </div>
+
+                <!-- Weekly Review Button (shown when pending) -->
+                ${this.renderWeeklyReviewButton()}
+
+                <!-- This Week's Goals -->
+                ${this.renderWeeklyGoalsSection()}
+
+                <!-- Today's Obligations -->
+                ${this.renderTodayObligations()}
+
+                <!-- Today's Priorities -->
+                ${this.renderTodayPriorities()}
+
+                <!-- Today's Overview -->
+                <div class="dashboard-section">
+                    <h2>📅 Today</h2>
+                    <div class="today-grid">
+                        ${this.renderTodayTasks(stats.tasks)}
+                        ${this.renderTodayHabits(stats.habits)}
+                    </div>
                 </div>
 
                 <!-- Streaks Overview -->
@@ -50,15 +74,6 @@ const Dashboard = {
                                 <div class="stat-label">All-Time Rate</div>
                             </div>
                         </div>
-                    </div>
-                </div>
-
-                <!-- Today's Overview -->
-                <div class="dashboard-section">
-                    <h2>📅 Today</h2>
-                    <div class="today-grid">
-                        ${this.renderTodayTasks(stats.tasks)}
-                        ${this.renderTodayHabits(stats.habits)}
                     </div>
                 </div>
 
@@ -107,69 +122,121 @@ const Dashboard = {
     ` : '';
 })()}
 
-                <!-- Quick Stats -->
-                <div class="dashboard-section">
-                    <h2>📊 Quick Stats</h2>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon">✓</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${stats.tasks.pending}</div>
-                                <div class="stat-label">Pending Tasks</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🔄</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${stats.habits.todayRemaining}</div>
-                                <div class="stat-label">Habits Left</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🎯</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${stats.goals.active}</div>
-                                <div class="stat-label">Active Goals</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">⏱️</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${stats.time.todayHours}h</div>
-                                <div class="stat-label">Tracked Today</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
                 <!-- Recent Activity -->
                 <div class="dashboard-section">
                     <h2>📋 Recent Activity</h2>
                     ${this.renderRecentActivity()}
                 </div>
 
-                <!-- Commitments for Tomorrow -->
-                ${(() => {
-                    const weekKey = CommitmentTracker.getWeekKey();
-                    const review = StorageManager.getWeeklyReviews()[weekKey];
-                    const goals = review?.goals || [];
-                    if (goals.length === 0) return '';
-                    return `
-                        <div class="dashboard-section">
-                            <h2>🎯 This Week's Goals</h2>
-                            <div class="weekly-goals-list">
-                                ${goals.map((g, i) => `
-                                    <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
-                                        <input type="checkbox" ${g.completed ? 'checked' : ''}
-                                            onchange="Dashboard.toggleWeeklyGoal('${weekKey}', ${i}); Dashboard.render();">
-                                        <span>${Utils.escapeHtml(g.title)}</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    `;
-                })()}
                 ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
+            </div>
+        `;
+    },
+
+    renderWeeklyReviewButton() {
+        if (!CommitmentTracker.hasPendingWeeklyReview()) return '';
+        return `
+            <div class="dashboard-section weekly-review-banner">
+                <div class="weekly-review-prompt">
+                    <div class="weekly-review-text">
+                        <strong>📋 Weekly Review Due</strong>
+                        <span>Take a few minutes to review your week and set goals for the next one.</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="PromptFlow.startWeeklyReview()">
+                        Start Weekly Review →
+                    </button>
+                </div>
+            </div>
+        `;
+    },
+
+    renderWeeklyGoalsSection() {
+        const weekKey = CommitmentTracker.getWeekKey();
+        const review = StorageManager.getWeeklyReviews()[weekKey];
+        const goals = review?.goals || [];
+        if (goals.length === 0) return '';
+        return `
+            <div class="dashboard-section">
+                <h2>🎯 This Week's Goals</h2>
+                <div class="weekly-goals-list">
+                    ${goals.map((g, i) => `
+                        <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
+                            <input type="checkbox" ${g.completed ? 'checked' : ''}
+                                onchange="Dashboard.toggleWeeklyGoal('${weekKey}', ${i}); Dashboard.render();">
+                            <span>${Utils.escapeHtml(g.title)}</span>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    renderTodayObligations() {
+        const today = Utils.getLogDateString();
+        const commitment = StorageManager.getCommitments(today);
+        const obligations = commitment?.obligations || [];
+        if (obligations.length === 0) return '';
+
+        // Sort chronologically by time (obligations without time go last)
+        const sorted = [...obligations].sort((a, b) => {
+            if (!a.time && !b.time) return 0;
+            if (!a.time) return 1;
+            if (!b.time) return -1;
+            return a.time.localeCompare(b.time);
+        });
+
+        const completed = sorted.filter(o => o.completed).length;
+        const allDone = completed === sorted.length;
+
+        return `
+            <div class="dashboard-section">
+                <h2>📋 Today's Obligations
+                    <span class="completion-badge ${allDone ? 'complete' : ''}">${completed}/${sorted.length}</span>
+                </h2>
+                <div class="obligations-list">
+                    ${sorted.map((o, i) => {
+                        const origIndex = obligations.indexOf(o);
+                        return `
+                            <div class="obligation-card ${o.completed ? 'completed' : ''}">
+                                <div class="obligation-checkbox">
+                                    <input type="checkbox" id="dash-ob-${origIndex}"
+                                        ${o.completed ? 'checked' : ''}
+                                        onchange="App.toggleObligation(${origIndex}); Dashboard.render();">
+                                    <label for="dash-ob-${origIndex}"></label>
+                                </div>
+                                <div class="obligation-content">
+                                    <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
+                                    ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
+                                </div>
+                                ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+                <div class="today-card-footer">
+                    <a href="#" onclick="App.showView('obligations'); return false;">View all →</a>
+                </div>
+            </div>
+        `;
+    },
+
+    renderTodayPriorities() {
+        const today = Utils.getLogDateString();
+        const commitment = StorageManager.getCommitments(today);
+        const priorities = commitment?.priorities || [];
+        if (priorities.length === 0) return '';
+        return `
+            <div class="dashboard-section">
+                <h2>🎯 Today's Priorities</h2>
+                <div class="priorities-summary">
+                    ${priorities.map(p => `
+                        <div class="priority-item">
+                            <span class="priority-level ${p.priority}">${p.priority}</span>
+                            <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
+                            ${p.rating ? `<span class="priority-rating">${'⭐'.repeat(p.rating)}</span>` : ''}
+                        </div>
+                    `).join('')}
+                </div>
             </div>
         `;
     },
@@ -592,7 +659,8 @@ const Dashboard = {
      */
     renderStreaksGrid() {
         const wakeupStreak = CommitmentTracker.calculateWakeupStreak();
-        const screentimeStreak = ScreentimeTracker.getStreak(90); // 1.5 hours goal
+        const screentimeGoal = StorageManager.getSettings().screentimeGoalMinutes || 90;
+        const screentimeStreak = ScreentimeTracker.getStreak(screentimeGoal);
         const activeHabits = HabitManager.getActiveHabits();
         
         // Get ALL habits with their streaks, sorted by current streak
@@ -648,6 +716,14 @@ const Dashboard = {
                 ` : ''}
             </div>
         `;
+    },
+
+    toggleWeeklyGoal(weekKey, index) {
+        const reviews = StorageManager.getWeeklyReviews();
+        const review = reviews[weekKey];
+        if (!review || !review.goals || !review.goals[index]) return;
+        review.goals[index].completed = !review.goals[index].completed;
+        StorageManager.saveWeeklyReview(weekKey, review);
     },
 
     /**

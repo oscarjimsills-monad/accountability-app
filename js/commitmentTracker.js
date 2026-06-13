@@ -252,17 +252,34 @@ const CommitmentTracker = {
     },
 
     needsWeeklyReview() {
-        const hour = new Date().getHours();
-        // Use log date to respect 5am boundary
-        const logDateStr = Utils.getLogDateString();
-        const logDate = new Date(logDateStr + 'T12:00:00'); // Use noon to avoid timezone issues
-        const day = logDate.getDay(); // 0 = Sunday
-        const isReviewTime = day === 0 && (hour >= 20 || hour < 5);
-        if (!isReviewTime) return false;
+        return false; // Weekly review is now triggered manually from dashboard
+    },
 
-        const lastReview = StorageManager.getLastWeeklyReview();
+    checkAndSetPendingWeeklyReview() {
+        // On Sundays, mark the current week as pending review if not done yet
+        const logDateStr = Utils.getLogDateString();
+        const logDate = new Date(logDateStr + 'T12:00:00');
+        if (logDate.getDay() !== 0) return; // Only on Sunday
+
         const thisWeekKey = this.getWeekKey();
-        return lastReview !== thisWeekKey;
+        const lastReview = StorageManager.getLastWeeklyReview();
+        if (lastReview === thisWeekKey) return; // Already reviewed
+
+        const pending = StorageManager.getPendingWeeklyReview();
+        if (!pending) {
+            StorageManager.savePendingWeeklyReview(thisWeekKey);
+        }
+    },
+
+    hasPendingWeeklyReview() {
+        const pending = StorageManager.getPendingWeeklyReview();
+        if (!pending) return false;
+        const lastReview = StorageManager.getLastWeeklyReview();
+        return lastReview !== pending;
+    },
+
+    getPendingWeeklyReviewKey() {
+        return StorageManager.getPendingWeeklyReview();
     },
 
     getWeekKey(date = new Date()) {
@@ -275,7 +292,10 @@ const CommitmentTracker = {
     },
 
     completeWeeklyReview() {
-        StorageManager.saveLastWeeklyReview(this.getWeekKey());
+        const pending = StorageManager.getPendingWeeklyReview();
+        const weekKey = pending || this.getWeekKey();
+        StorageManager.saveLastWeeklyReview(weekKey);
+        StorageManager.clearPendingWeeklyReview();
     },
 
     /**

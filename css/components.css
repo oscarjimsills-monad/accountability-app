@@ -247,6 +247,21 @@
     color: #065f46;
 }
 
+[data-theme="dark"] .priority-high {
+    background: rgba(239, 68, 68, 0.2);
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .priority-medium {
+    background: rgba(245, 158, 11, 0.2);
+    color: #fcd34d;
+}
+
+[data-theme="dark"] .priority-low {
+    background: rgba(16, 185, 129, 0.2);
+    color: #6ee7b7;
+}
+
 .task-description {
     color: var(--text-secondary);
     font-size: 0.9rem;
@@ -1394,7 +1409,7 @@
 }
 
 .obligation-card {
-    background: white;
+    background: var(--surface);
     border: 2px solid var(--border-color);
     border-radius: var(--radius);
     padding: 1.25rem;
@@ -1591,7 +1606,7 @@
 }
 
 .shopping-list-section {
-    background: white;
+    background: var(--surface);
     border-radius: var(--radius);
     padding: 1.5rem;
     box-shadow: var(--shadow-sm);
@@ -1819,7 +1834,7 @@
     height: 2.5rem;
     border-radius: 50%;
     border: 2px solid var(--border-color);
-    background: white;
+    background: var(--surface);
     cursor: pointer;
     font-size: 1.2rem;
     display: flex;
@@ -1975,4 +1990,168 @@
     .app-edit-row .btn-icon {
         justify-self: end;
     }
+}
+
+/* Weekly Review Banner */
+.weekly-review-banner {
+    background: linear-gradient(135deg, #1e40af, #3b82f6);
+    border-radius: var(--radius);
+    padding: 1.25rem 1.5rem !important;
+}
+.weekly-review-prompt {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+}
+.weekly-review-text {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: #fff;
+}
+.weekly-review-text strong { font-size: 1.1rem; }
+.weekly-review-text span { font-size: 0.9rem; opacity: 0.9; }
+.weekly-review-banner .btn-primary {
+    background: #fff;
+    color: #1e40af;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.weekly-review-banner .btn-primary:hover { background: #f0f4ff; }
+
+/* Weekly goals */
+.weekly-goals-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.weekly-goal-card {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    transition: var(--transition);
+}
+.weekly-goal-card.completed {
+    background: #f0fdf4;
+    border-color: #86efac;
+    text-decoration: line-through;
+    color: var(--text-secondary);
+}
+.weekly-goal-card input[type="checkbox"] { width: 18px; height: 18px; flex-shrink: 0; cursor: pointer; }
+
+/* Previous goals review in weekly flow */
+.prev-goals-review {
+    background: var(--background);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 1.25rem;
+    border: 1px solid var(--border-color);
+}
+.prev-goals-review h3 { margin-bottom: 0.75rem; font-size: 1rem; }
+.prev-goals-list { display: flex; flex-direction: column; gap: 0.5rem; }
+.prev-goal-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.95rem; }
+.prev-goal-item.completed .prev-goal-title { text-decoration: line-through; color: var(--text-secondary); }
+
+/* Today's priorities on dashboard */
+.priority-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.6rem 0;
+    border-bottom: 1px solid var(--border-color);
+}
+.priority-item:last-child { border-bottom: none; }
+.priority-rating { margin-left: auto; font-size: 0.85rem; }
+
+/* Dark mode overrides for hardcoded light colours */
+[data-theme="dark"] .obligation-card.completed,
+[data-theme="dark"] .weekly-goal-card.completed {
+    background: #14532d33;
+    border-color: #16a34a;
+}
+
+[data-theme="dark"] .habit-detail-item.completed,
+[data-theme="dark"] .detail-card.success {
+    background: #14532d22;
+}
+
+[data-theme="dark"] .detail-card.warning {
+    background: #7c2d1222;
+}
+
+[data-theme="dark"] .priority-high {
+    background: #7f1d1d44;
+    color: #fca5a5;
+}
+
+[data-theme="dark"] .priority-medium {
+    background: #78350f44;
+    color: #fcd34d;
+}
+
+[data-theme="dark"] .priority-low {
+    background: #14532d44;
+    color: #6ee7b7;
+}
+
+[data-theme="dark"] .screentime-status-card.status-good {
+    background: #14532d22;
+    border-color: #16a34a;
+}
+
+[data-theme="dark"] .screentime-status-card.status-warning {
+    background: #7c2d1222;
+    border-color: #dc2626;
+}
+
+[data-theme="dark"] .streak-card.streak-active {
+    background: #1e3a5f;
+    border-color: #3b82f6;
+}
+
+[data-theme="dark"] .today-card,
+[data-theme="dark"] .stat-card,
+[data-theme="dark"] .dashboard-section {
+    background: var(--surface);
+}
+
+[data-theme="dark"] .reflection-form-card,
+[data-theme="dark"] .screentime-entry-card,
+[data-theme="dark"] .timer-widget {
+    background: var(--surface);
+    border-color: var(--border-color);
+}
+
+/* Dark mode fixes for hardcoded light-theme colours */
+[data-theme="dark"] .daily-goal-badge.under-goal {
+    color: #6ee7b7;
+}
+[data-theme="dark"] .daily-goal-badge.over-goal {
+    color: #fca5a5;
+}
+[data-theme="dark"] .status-message.success {
+    color: #6ee7b7;
+}
+[data-theme="dark"] .status-message.warning {
+    color: #fca5a5;
+}
+[data-theme="dark"] .pattern-success h3 {
+    color: #6ee7b7;
+}
+[data-theme="dark"] .pattern-warning h3 {
+    color: #fca5a5;
+}
+[data-theme="dark"] .pattern-caution h3 {
+    color: #fcd34d;
+}
+[data-theme="dark"] .obligation-card.completed {
+    background: rgba(16, 185, 129, 0.1);
+}
+[data-theme="dark"] .history-entry-success {
+    color: #6ee7b7;
+}
+[data-theme="dark"] .history-entry-warning {
+    color: #fca5a5;
 }

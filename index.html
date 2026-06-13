@@ -5,15 +5,35 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Accountability app with prompt-based check-ins and harsh but fair accountability">
     <title>Accountability App</title>
-    
+
     <!-- CSS -->
-    <link rel="stylesheet" href="css/styles.css">
-    <link rel="stylesheet" href="css/components.css">
-    <link rel="stylesheet" href="css/prompts.css">
-    <link rel="stylesheet" href="css/accountability.css">
-    <link rel="stylesheet" href="css/responsive.css">
+    <link rel="stylesheet" href="css/styles.css?v=7">
+    <link rel="stylesheet" href="css/components.css?v=7">
+    <link rel="stylesheet" href="css/prompts.css?v=7">
+    <link rel="stylesheet" href="css/accountability.css?v=7">
+    <link rel="stylesheet" href="css/responsive.css?v=7">
 </head>
 <body>
+
+    <!-- Auth Screen (shown when not logged in) -->
+    <div id="auth-screen" class="auth-screen" style="display: none;">
+        <div class="auth-container">
+            <div class="auth-logo">📊</div>
+            <h1 class="auth-title">Accountability</h1>
+            <p class="auth-subtitle">Your personal accountability system</p>
+            <button class="btn btn-google" onclick="AuthManager.signInWithGoogle()">
+                <svg class="google-icon" viewBox="0 0 24 24" width="20" height="20">
+                    <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
+                    <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                    <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                    <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                </svg>
+                Sign in with Google
+            </button>
+            <p class="auth-note">Your data is private and only accessible to you.</p>
+        </div>
+    </div>
+
     <!-- Loading Screen -->
     <div id="loading-screen" class="loading-screen">
         <div class="loading-spinner"></div>
@@ -22,7 +42,7 @@
 
     <!-- Main App Container -->
     <div id="app" class="app-container" style="display: none;">
-        
+
         <!-- Prompt Flow Container (for check-ins) -->
         <div id="prompt-container" class="prompt-container" style="display: none;">
             <div class="prompt-progress">
@@ -31,11 +51,11 @@
                 </div>
                 <span id="prompt-step-indicator" class="step-indicator">Step 1 of 7</span>
             </div>
-            
+
             <div id="prompt-content" class="prompt-content">
                 <!-- Prompt screens will be dynamically inserted here -->
             </div>
-            
+
             <div class="prompt-navigation">
                 <button id="prompt-back-btn" class="btn btn-secondary" style="display: none;">
                     ← Back
@@ -51,7 +71,7 @@
 
         <!-- Main App Layout (after check-in) -->
         <div id="main-app" class="main-layout" style="display: none;">
-            
+
             <!-- Header -->
             <header class="app-header">
                 <div class="header-content">
@@ -117,13 +137,24 @@
                         <span class="nav-text">Settings</span>
                     </a></li>
                 </ul>
-                
+
                 <div class="sidebar-footer">
+                    <!-- Signed-in user info -->
+                    <div class="sidebar-user">
+                        <div id="sidebar-user-avatar" class="sidebar-user-avatar" style="display:none;"></div>
+                        <span id="sidebar-user-name" class="sidebar-user-name"></span>
+                    </div>
                     <button id="update-checkin-btn" class="btn btn-secondary btn-sm">
                         Update Check-in
                     </button>
+                    <button id="theme-toggle-btn" class="btn btn-text btn-sm theme-toggle-btn" aria-label="Toggle dark mode">
+                        🌙 Dark Mode
+                    </button>
                     <button id="export-data-btn" class="btn btn-text btn-sm">
                         Export Data
+                    </button>
+                    <button id="sign-out-btn" class="btn btn-text btn-sm sign-out-btn">
+                        Sign Out
                     </button>
                 </div>
             </nav>
@@ -143,22 +174,27 @@
     <!-- Modal Container -->
     <div id="modal-container" class="modal-container"></div>
 
+    <!-- Supabase (must load before any app JS) -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
     <!-- JavaScript -->
-    <script src="js/utils.js?v=2"></script>
-    <script src="js/storage.js?v=2"></script>
-    <script src="js/commitmentTracker.js?v=2"></script>
-    <script src="js/accountability.js?v=2"></script>
-    <script src="js/promptFlow.js?v=2"></script>
-    <script src="js/tasks.js?v=2"></script>
-    <script src="js/habits.js?v=2"></script>
-    <script src="js/goals.js?v=2"></script>
-    <script src="js/shoppingList.js?v=1"></script>
-    <script src="js/timeTracker.js?v=2"></script>
-    <script src="js/screentimeTracker.js?v=2"></script>
-    <script src="js/screentimeGraph.js?v=1"></script>
-    <script src="js/reflections.js?v=2"></script>
-    <script src="js/dashboard.js?v=2"></script>
-    <script src="js/dataManager.js?v=2"></script>
-    <script src="js/app.js?v=2"></script>
+    <script src="js/utils.js?v=7"></script>
+    <script src="js/supabase-client.js?v=7"></script>
+    <script src="js/auth.js?v=7"></script>
+    <script src="js/storage.js?v=7"></script>
+    <script src="js/commitmentTracker.js?v=7"></script>
+    <script src="js/accountability.js?v=7"></script>
+    <script src="js/promptFlow.js?v=7"></script>
+    <script src="js/tasks.js?v=7"></script>
+    <script src="js/habits.js?v=7"></script>
+    <script src="js/goals.js?v=7"></script>
+    <script src="js/shoppingList.js?v=7"></script>
+    <script src="js/timeTracker.js?v=7"></script>
+    <script src="js/screentimeTracker.js?v=7"></script>
+    <script src="js/screentimeGraph.js?v=7"></script>
+    <script src="js/reflections.js?v=7"></script>
+    <script src="js/dashboard.js?v=7"></script>
+    <script src="js/dataManager.js?v=7"></script>
+    <script src="js/app.js?v=7"></script>
 </body>
 </html>

@@ -84,12 +84,13 @@ const App = {
      * Start the application flow
      */
     startApp() {
-        // Always show the main app container first
         const promptContainer = document.getElementById('prompt-container');
         const mainApp = document.getElementById('main-app');
-        
-        // Check if check-in is needed
-        if (CommitmentTracker.needsMorningCheckin() || CommitmentTracker.needsEveningCheckin()) {
+
+        // Morning check-in auto-loads — but only if last night's evening check-in
+        // has been completed (or it's a fresh day with no evening check-in pending).
+        // Evening check-in is NEVER auto-loaded — it appears as a button on the dashboard.
+        if (CommitmentTracker.needsMorningCheckin()) {
             if (promptContainer) promptContainer.style.display = 'block';
             if (mainApp) mainApp.style.display = 'none';
             PromptFlow.startCheckIn();
@@ -227,6 +228,17 @@ const App = {
             default:
                 Dashboard.render();
         }
+    },
+
+    /**
+     * Trigger the evening check-in from the dashboard button
+     */
+    startEveningCheckin() {
+        const promptContainer = document.getElementById('prompt-container');
+        const mainApp = document.getElementById('main-app');
+        if (promptContainer) promptContainer.style.display = 'block';
+        if (mainApp) mainApp.style.display = 'none';
+        PromptFlow.startCheckIn();
     },
 
     /**

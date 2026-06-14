@@ -29,6 +29,9 @@ const Dashboard = {
                     <p class="dashboard-date">${Utils.formatDate(new Date(Utils.getLogDateString()), 'long')}</p>
                 </div>
 
+                <!-- Nightly Check-in Button (shown after 20:00 until completed) -->
+                ${this.renderNightlyCheckinButton()}
+
                 <!-- Weekly Review Button (shown when pending) -->
                 ${this.renderWeeklyReviewButton()}
 
@@ -129,6 +132,26 @@ const Dashboard = {
                 </div>
 
                 ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
+            </div>
+        `;
+    },
+
+    renderNightlyCheckinButton() {
+        if (!CommitmentTracker.needsEveningCheckin()) return '';
+        const today = Utils.getLogDateString(); // e.g. "2026-06-14"
+        const [year, month, day] = today.split('-');
+        const label = `${day}/${month}`; // DD/MM
+        return `
+            <div class="dashboard-section nightly-checkin-banner">
+                <div class="weekly-review-prompt">
+                    <div class="weekly-review-text">
+                        <strong>🌙 Nightly Check-in ${label}</strong>
+                        <span>Log your evening, set tomorrow's obligations and wind down.</span>
+                    </div>
+                    <button class="btn btn-primary" onclick="App.startEveningCheckin()">
+                        Start Check-in →
+                    </button>
+                </div>
             </div>
         `;
     },

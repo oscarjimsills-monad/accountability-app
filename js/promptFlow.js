@@ -582,11 +582,53 @@ const PromptFlow = {
      */
     getEveningSteps() {
         return [
+            // Step 0 — date confirmation
+            // The app guesses which day is ending (using the 5am boundary) and asks the
+            // user to confirm. This is the single place that sets flowData.confirmedDate —
+            // every other evening step reads from that instead of calling getLogDateString().
+            {
+                name: 'date-confirm',
+                skippable: false,
+                render: (data) => {
+                    const guessed = data.confirmedDate || Utils.getLogDateString();
+                    const [y, m, d] = guessed.split('-');
+                    const displayDate = `${d}/${m}/${y}`;
+                    return `
+                        <div class="prompt-screen date-confirm-screen">
+                            <h2>🌙 End of Day</h2>
+                            <p class="subtitle">The app thinks you're logging the end of <strong>${displayDate}</strong>. Is that right?</p>
+                            <div class="form-group">
+                                <label for="confirmed-date">Date you're logging for:</label>
+                                <input type="date" id="confirmed-date" class="input-text" value="${guessed}">
+                            </div>
+                            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:0.5rem;">
+                                Change this if you're logging late — e.g. doing last night's check-in this morning.
+                            </p>
+                        </div>
+                    `;
+                },
+                setupListeners: (data) => {
+                    // Pre-populate confirmedDate from the input so it's always set
+                    const input = document.getElementById('confirmed-date');
+                    if (input) {
+                        data.confirmedDate = input.value || Utils.getLogDateString();
+                        input.addEventListener('change', () => {
+                            data.confirmedDate = input.value;
+                        });
+                    }
+                },
+                validate: (data) => {
+                    const input = document.getElementById('confirmed-date');
+                    if (input && input.value) data.confirmedDate = input.value;
+                    return true;
+                }
+            },
+
             {
                 name: 'obligations-review',
                 skippable: true,
                 render: (data) => {
-                    const logDate = Utils.getLogDateString();
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
                     const commitment = StorageManager.getCommitments(logDate);
                     const obligations = commitment?.obligations || [];
 
@@ -628,7 +670,7 @@ const PromptFlow = {
                 name: 'priorities-rating',
                 skippable: true,
                 render: (data) => {
-                    const logDate = Utils.getLogDateString();
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
                     const commitment = StorageManager.getCommitments(logDate);
                     const priorities = commitment?.priorities || [];
 
@@ -668,28 +710,28 @@ const PromptFlow = {
                     `;
                 },
                 validate: (data) => {
-                    const logDate = Utils.getLogDateString();
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
                     const commitment = StorageManager.getCommitments(logDate);
                     const priorities = commitment?.priorities || [];
-                    
+
                     if (priorities.length === 0) return true;
-                    
+
                     // Check if all priorities have been rated
                     if (!data.priorityRatings) data.priorityRatings = {};
-                    
+
                     const allRated = priorities.every((p, i) => data.priorityRatings[i] !== undefined);
-                    
+
                     if (!allRated) {
                         Utils.showError('Please rate all priorities');
                         return false;
                     }
-                    
+
                     // Save ratings to commitment
                     priorities.forEach((p, i) => {
                         p.rating = data.priorityRatings[i];
                     });
                     StorageManager.saveCommitments(logDate, commitment);
-                    
+
                     return true;
                 }
             },
@@ -700,7 +742,7 @@ const PromptFlow = {
                 render: (data) => {
                     // Initialise walk-through state on first render
                     if (!data.walkthrough) {
-                        const logDate = Utils.getLogDateString();
+                        const logDate = data.confirmedDate || Utils.getLogDateString();
                         const commitment = StorageManager.getCommitments(logDate);
                         const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
                         const [wh, wm] = wakeupTime.split(':').map(Number);
@@ -1547,11 +1589,13 @@ const PromptFlow = {
      * Complete evening flow
      */
     completeEveningFlow() {
-        // Get the current log date (respects 5am boundary)
-        const logDate = Utils.getLogDateString();
-        
-        // Calculate tomorrow's log date (always one day after the current log date)
-        const tomorrow = new Date(logDate);
+        // Use the user-confirmed date from step 0, not the clock.
+        // This is why we collected it upfront — every downstream save uses it.
+        const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
+
+        // Tomorrow is always exactly one calendar day after the confirmed evening date.
+        // Obligations and wakeup commitments set tonight apply to the next morning.
+        const tomorrow = new Date(logDate + 'T12:00:00');
         tomorrow.setDate(tomorrow.getDate() + 1);
         const tomorrowStr = Utils.getDateString(tomorrow);
 
@@ -1577,8 +1621,8 @@ const PromptFlow = {
             ScreentimeTracker.addEntry(logDate, hours, minutes, appsList);
         }
 
-        // Mark evening check-in complete
-        CommitmentTracker.completeEveningCheckin();
+        // Mark evening check-in complete for the user-confirmed date
+        CommitmentTracker.completeEveningCheckin(logDate);
 
         Utils.showSuccess('Evening check-in complete! Sleep well! 😴');
         this.goToDashboard();
@@ -1652,7 +1696,8 @@ const PromptFlow = {
     },
 
     toggleEveningObligation(index) {
-        const logDate = Utils.getLogDateString();
+        // Use the user-confirmed date, not the clock — same date the rest of the evening flow uses
+        const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(logDate);
         if (!commitment?.obligations?.[index]) return;
         commitment.obligations[index].completed = !commitment.obligations[index].completed;
@@ -1700,7 +1745,8 @@ const PromptFlow = {
         const wt = this.flowData.walkthrough;
         if (!wt) return;
 
-        const logDate = Utils.getLogDateString();
+        // Time entries from the walkthrough belong to the confirmed evening date
+        const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
         const startMinutes = wt.pendingStartMinutes;
         const duration = wt.pendingDuration;
 

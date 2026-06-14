@@ -242,13 +242,21 @@ const CommitmentTracker = {
     },
 
     /**
-     * Check if morning check-in is needed
+     * Check if morning check-in is needed.
+     * Rule: fire when evening check-in has been done on the same date as (or after)
+     * the last morning check-in — meaning a night has passed and morning hasn't caught up.
+     * No time restriction. First-time users (no evening on record) see the evening button first.
      */
     needsMorningCheckin() {
         const lastCheckin = StorageManager.getLastCheckin();
-        const today = Utils.getLogDateString();
-        const hour = new Date().getHours();
-        return lastCheckin !== today && hour >= 5 && hour < 20;
+        const lastEveningCheckin = StorageManager.getLastEveningCheckin();
+
+        // No evening check-in ever recorded — first-time user, show evening button first
+        if (!lastEveningCheckin) return false;
+
+        // Evening date is same as or later than last morning date →
+        // a new morning is needed (morning date will be set to lastEveningCheckin + 1)
+        return lastEveningCheckin >= (lastCheckin || '');
     },
 
     needsWeeklyReview() {
@@ -299,28 +307,39 @@ const CommitmentTracker = {
     },
 
     /**
-     * Check if evening check-in is needed
+     * Check if evening check-in is needed.
+     * No time restriction — button is visible any time of day
+     * until the evening check-in for the current log-date is completed.
      */
     needsEveningCheckin() {
         const lastEveningCheckin = StorageManager.getLastEveningCheckin();
         const logDate = Utils.getLogDateString();
-        const hour = new Date().getHours();
-        const isEveningTime = hour >= 20 || hour < 5;
-        return isEveningTime && lastEveningCheckin !== logDate;
+        return lastEveningCheckin !== logDate;
     },
 
     /**
-     * Mark morning check-in complete
+     * Mark morning check-in complete.
+     * Date is always lastEveningCheckin + 1 day — never derived from the clock.
+     * This keeps morning anchored to its evening, regardless of what time it is.
      */
     completeMorningCheckin() {
-        StorageManager.saveLastCheckin(Utils.getLogDateString());
+        const lastEvening = StorageManager.getLastEveningCheckin();
+        if (lastEvening) {
+            const morningDate = new Date(lastEvening + 'T12:00:00');
+            morningDate.setDate(morningDate.getDate() + 1);
+            StorageManager.saveLastCheckin(Utils.getDateString(morningDate));
+        } else {
+            // Fallback — should not normally be reached
+            StorageManager.saveLastCheckin(Utils.getLogDateString());
+        }
     },
 
     /**
-     * Mark evening check-in complete
+     * Mark evening check-in complete for a specific confirmed date.
+     * The date is user-confirmed at the start of the flow, not derived from the clock.
      */
-    completeEveningCheckin() {
-        StorageManager.saveLastEveningCheckin(Utils.getLogDateString());
+    completeEveningCheckin(confirmedDate) {
+        StorageManager.saveLastEveningCheckin(confirmedDate || Utils.getLogDateString());
     },
 
     /**

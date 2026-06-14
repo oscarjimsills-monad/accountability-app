@@ -810,4 +810,189 @@
     opacity: 1;
 }
 
+/* ─── Dark Mode — Check-in & Prompt Screens ──────────────────────────────── */
+/*
+   Palette drawn from the World Cup app:
+   bg        #0d1b2a   deep navy page background
+   surface   #162032   card base
+   surface2  #1e2f45   inset / secondary surface
+   border    #2a3f5a   subtle border
+   primary   #c8a951   gold accent
+   text      #e8eaf0   primary text
+   muted     #7a8898   secondary text
+*/
+
+/* Replace the purple gradient background with deep navy */
+[data-theme="dark"] .prompt-container {
+    background: #0d1b2a;
+}
+
+/* Progress bar track and fill */
+[data-theme="dark"] .progress-bar {
+    background: #2a3f5a;
+}
+[data-theme="dark"] .progress-fill {
+    background: #c8a951;
+}
+[data-theme="dark"] .step-indicator {
+    color: #7a8898;
+}
+
+/* Card surface — two-level depth like the World Cup app */
+[data-theme="dark"] .prompt-screen {
+    background: #162032;
+    border: 1px solid #2a3f5a;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
+}
+[data-theme="dark"] .prompt-screen h2 {
+    color: #e8eaf0;
+}
+[data-theme="dark"] .prompt-screen .subtitle {
+    color: #7a8898;
+}
+
+/* Nav buttons at the bottom of the flow */
+[data-theme="dark"] .prompt-navigation .btn-secondary {
+    background: #1e2f45;
+    border-color: #2a3f5a;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .prompt-navigation .btn-primary {
+    background: #c8a951;
+    color: #0d1b2a;
+    border-color: #c8a951;
+}
+[data-theme="dark"] .prompt-navigation .btn-primary:hover {
+    background: #dbb85e;
+}
+[data-theme="dark"] .prompt-navigation .btn-text {
+    color: #7a8898;
+}
+
+/* Mood buttons */
+[data-theme="dark"] .mood-btn {
+    background: #1e2f45;
+    border-color: #2a3f5a;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .mood-btn:hover {
+    border-color: #c8a951;
+}
+[data-theme="dark"] .mood-btn.selected {
+    border-color: #c8a951;
+    background: rgba(200, 169, 81, 0.12);
+}
+
+/* Commitment boxes */
+[data-theme="dark"] .commitment-box {
+    background: #1e2f45;
+    border: 1px solid #2a3f5a;
+}
+[data-theme="dark"] .commitment-label {
+    color: #7a8898;
+}
+[data-theme="dark"] .commitment-value {
+    color: #c8a951;
+}
+[data-theme="dark"] .commitment-reminder {
+    background: rgba(200, 169, 81, 0.08);
+    border-left-color: #c8a951;
+}
+[data-theme="dark"] .commitment-warning {
+    background: rgba(224, 85, 85, 0.1);
+    border-left-color: #e05555;
+}
+
+/* Obligation items inside check-in */
+[data-theme="dark"] .obligation-item {
+    background: #1e2f45;
+    border: 1px solid #2a3f5a;
+}
+
+/* Day selector chips */
+[data-theme="dark"] .day-selector label {
+    background: #1e2f45;
+    border-color: #2a3f5a;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .day-selector label:hover {
+    border-color: #c8a951;
+    color: #c8a951;
+}
+
+/* Stat cards inside the flow (summary / ready screens) */
+[data-theme="dark"] .prompt-screen .stat-card,
+[data-theme="dark"] .stats-summary .stat-card,
+[data-theme="dark"] .stats-quick .stat-item {
+    background: #1e2f45;
+    border: 1px solid #2a3f5a;
+}
+[data-theme="dark"] .stat-number,
+[data-theme="dark"] .stats-quick .stat-value {
+    color: #c8a951;
+}
+[data-theme="dark"] .stat-text,
+[data-theme="dark"] .stats-quick .stat-label {
+    color: #7a8898;
+}
+
+/* Highlight stat card & commitment preview — replace purple gradient */
+[data-theme="dark"] .stat-card.highlight {
+    background: linear-gradient(135deg, #162032 0%, #1e2f45 100%);
+    border: 1px solid #c8a951;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .stat-card.highlight .stat-value,
+[data-theme="dark"] .stat-card.highlight .stat-label {
+    color: #e8eaf0;
+}
+[data-theme="dark"] .commitment-preview {
+    background: linear-gradient(135deg, #0d1b2a 0%, #162032 100%);
+    border: 1px solid #2a3f5a;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .commitment-preview h2 {
+    color: #c8a951;
+}
+[data-theme="dark"] .commitment-item {
+    background: rgba(200, 169, 81, 0.06);
+    border: 1px solid #2a3f5a;
+}
+
+/* Screentime inputs inside check-in */
+[data-theme="dark"] .screentime-total {
+    background: #1e2f45;
+    border-color: #2a3f5a;
+}
+[data-theme="dark"] .add-app-form,
+[data-theme="dark"] .empty-apps,
+[data-theme="dark"] .app-item,
+[data-theme="dark"] .daily-goal-info {
+    background: #1e2f45;
+    border-color: #2a3f5a;
+}
+
+/* Summary / ready screen lists */
+[data-theme="dark"] .summary-section h3 {
+    color: #e8eaf0;
+}
+[data-theme="dark"] .summary-value {
+    color: #c8a951;
+}
+[data-theme="dark"] .summary-list li {
+    border-bottom-color: #2a3f5a;
+    color: #e8eaf0;
+}
+[data-theme="dark"] .summary-list li.empty {
+    color: #7a8898;
+}
+[data-theme="dark"] .motivational-text {
+    color: #7a8898;
+}
+
+/* Date confirm screen (new step 0 of evening flow) */
+[data-theme="dark"] .date-confirm-screen {
+    background: #162032;
+}
+
 /* Made with Bob */

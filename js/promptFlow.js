@@ -737,6 +737,50 @@ const PromptFlow = {
             },
 
             {
+                // Ask what time they actually went to bed (for the night being logged).
+                // This is DIFFERENT from data.actualBedtime (previous night's bedtime check in
+                // morning flow) — here we need the END of the confirmed log date so the
+                // day-walkthrough knows its ceiling without relying on the current clock.
+                name: 'bedtime-capture',
+                skippable: false,
+                render: (data) => {
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
+                    const [y, m, d] = logDate.split('-');
+                    const displayDate = `${d}/${m}`;
+                    // Default suggestion: midnight
+                    const defaultBedtime = data.logBedtime || '00:00';
+                    return `
+                        <div class="prompt-screen">
+                            <h2>🛏️ When did you go to sleep?</h2>
+                            <p class="subtitle">End of <strong>${displayDate}</strong> — what time did you actually fall asleep? (Enter the next morning if you went to bed after midnight.)</p>
+                            <div class="form-group">
+                                <label for="log-bedtime">Bedtime</label>
+                                <input type="time" id="log-bedtime" class="input-time input-large"
+                                       value="${defaultBedtime}">
+                                <p class="help-text">e.g. 23:30 for 11:30pm · 02:00 for 2am · 08:00 for 8am next morning</p>
+                            </div>
+                        </div>
+                    `;
+                },
+                setupListeners: (data) => {
+                    const input = document.getElementById('log-bedtime');
+                    if (input) {
+                        data.logBedtime = input.value || '00:00';
+                        input.addEventListener('change', () => { data.logBedtime = input.value; });
+                    }
+                },
+                validate: (data) => {
+                    const input = document.getElementById('log-bedtime');
+                    if (input && input.value) data.logBedtime = input.value;
+                    if (!data.logBedtime) {
+                        Utils.showError('Please enter the time you went to sleep');
+                        return false;
+                    }
+                    return true;
+                }
+            },
+
+            {
         name: 'day-walkthrough',
                 skippable: true,
                 render: (data) => {
@@ -815,20 +859,28 @@ const PromptFlow = {
                     }
 
                     const wt = data.walkthrough;
-                    const now = new Date();
-                    const currentHour = now.getHours();
-                    
-                    // Always end at current time
-                    // If before 5am, add 1440 to represent time past midnight
-                    let endOfDayMinutes;
-                    if (currentHour < 5) {
-                        // Past midnight (00:00-04:59), so add 1440 to current time
-                        // e.g., 01:16 = 76 minutes, becomes 1440 + 76 = 1516 minutes
-                        endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
-                    } else {
-                        // Same day (05:00-23:59), use current time
-                        endOfDayMinutes = currentHour * 60 + now.getMinutes();
+
+                    // End of the log period = when the user went to bed (captured in the
+                    // preceding bedtime-capture step).  If bedtime-in-minutes is LESS than
+                    // the wakeup-in-minutes we know sleep was after midnight → add 1440 so
+                    // the timeline extends past 00:00 without wrapping back to zero.
+                    // e.g. wakeup 10:00 (600) · bedtime 08:00 (480) → 480 < 600 → next-day
+                    //      → endOfDayMinutes = 480 + 1440 = 1920
+                    // e.g. wakeup 09:00 (540) · bedtime 23:30 (1410) → same day → 1410
+                    const logBedtime = data.logBedtime || '23:59';
+                    const [bh, bm] = logBedtime.split(':').map(Number);
+                    let bedMinutes = bh * 60 + bm;
+                    // Determine wakeup minutes to compare against
+                    const logDateBed = data.confirmedDate || Utils.getLogDateString();
+                    const commitmentBed = StorageManager.getCommitments(logDateBed);
+                    const wakeupTimeBed = commitmentBed?.wakeup?.actual || commitmentBed?.wakeup?.commitment || '08:00';
+                    const [wbh, wbm] = wakeupTimeBed.split(':').map(Number);
+                    const wakeMinutes = wbh * 60 + wbm;
+                    if (bedMinutes <= wakeMinutes) {
+                        // Bedtime is next calendar day
+                        bedMinutes += 1440;
                     }
+                    const endOfDayMinutes = bedMinutes;
                     
                     // Calculate remaining time
                     const remainingMinutes = Math.max(0, endOfDayMinutes - wt.currentMinutes);
@@ -983,16 +1035,16 @@ const PromptFlow = {
                     const wt = data.walkthrough;
                     if (!wt) return true;
 
-                    const now = new Date();
-                    const currentHour = now.getHours();
-                    
-                    // Calculate end of day minutes (same logic as render)
-                    let endOfDayMinutes;
-                    if (currentHour < 5) {
-                        endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
-                    } else {
-                        endOfDayMinutes = currentHour * 60 + now.getMinutes();
-                    }
+                    // Same bedtime-anchored ceiling as the render function
+                    const logBedtimeV = data.logBedtime || '23:59';
+                    const [bhV, bmV] = logBedtimeV.split(':').map(Number);
+                    let bedMinutesV = bhV * 60 + bmV;
+                    const logDateV = data.confirmedDate || Utils.getLogDateString();
+                    const commitmentV = StorageManager.getCommitments(logDateV);
+                    const wakeupTimeV = commitmentV?.wakeup?.actual || commitmentV?.wakeup?.commitment || '08:00';
+                    const [wbhV, wbmV] = wakeupTimeV.split(':').map(Number);
+                    if (bedMinutesV <= (wbhV * 60 + wbmV)) bedMinutesV += 1440;
+                    const endOfDayMinutes = bedMinutesV;
 
                     if (wt.phase === 'activity') {
                         const activity = document.getElementById('wt-activity')?.value.trim();
@@ -1715,23 +1767,23 @@ const PromptFlow = {
     walkthroughUntilNow() {
         const wt = this.flowData.walkthrough;
         if (!wt || wt.phase !== 'duration') return;
-        
-        const now = new Date();
-        const currentHour = now.getHours();
-        
-        // Calculate end of day minutes (same logic as render/validate)
-        let endOfDayMinutes;
-        if (currentHour < 5) {
-            endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
-        } else {
-            endOfDayMinutes = currentHour * 60 + now.getMinutes();
-        }
-        
-        // Calculate duration from current position to now
+
+        // Use bedtime (logged by user) as the end of the period, same as render/validate
+        const logBedtimeU = this.flowData.logBedtime || '23:59';
+        const [bhU, bmU] = logBedtimeU.split(':').map(Number);
+        let bedMinutesU = bhU * 60 + bmU;
+        const logDateU = this.flowData.confirmedDate || Utils.getLogDateString();
+        const commitmentU = StorageManager.getCommitments(logDateU);
+        const wakeupTimeU = commitmentU?.wakeup?.actual || commitmentU?.wakeup?.commitment || '08:00';
+        const [wbhU, wbmU] = wakeupTimeU.split(':').map(Number);
+        if (bedMinutesU <= (wbhU * 60 + wbmU)) bedMinutesU += 1440;
+        const endOfDayMinutes = bedMinutesU;
+
+        // Calculate duration from current position to end of log period
         const duration = endOfDayMinutes - wt.currentMinutes;
-        
+
         if (duration <= 0) {
-            Utils.showError('Already at current time');
+            Utils.showError('Already at end of logged period');
             return;
         }
         
@@ -1779,17 +1831,18 @@ const PromptFlow = {
         wt.pendingDuration = null;
         wt.pendingStartMinutes = null;
         
-        // Check if we've reached current time
-        const now = new Date();
-        const currentHour = now.getHours();
-        let endOfDayMinutes;
-        if (currentHour < 5) {
-            endOfDayMinutes = 1440 + (currentHour * 60 + now.getMinutes());
-        } else {
-            endOfDayMinutes = currentHour * 60 + now.getMinutes();
-        }
-        
-        // If we've reached or passed current time, move to next step
+        // Check if we've reached the end of the logged period (bedtime, not current clock)
+        const logBedtimeF = this.flowData.logBedtime || '23:59';
+        const [bhF, bmF] = logBedtimeF.split(':').map(Number);
+        let bedMinutesF = bhF * 60 + bmF;
+        const logDateF = this.flowData.confirmedDate || Utils.getLogDateString();
+        const commitmentF = StorageManager.getCommitments(logDateF);
+        const wakeupTimeF = commitmentF?.wakeup?.actual || commitmentF?.wakeup?.commitment || '08:00';
+        const [wbhF, wbmF] = wakeupTimeF.split(':').map(Number);
+        if (bedMinutesF <= (wbhF * 60 + wbmF)) bedMinutesF += 1440;
+        const endOfDayMinutes = bedMinutesF;
+
+        // If we've reached or passed bedtime, walkthrough is complete
         if (wt.currentMinutes >= endOfDayMinutes) {
             // Walkthrough complete, move to next step
             this.handleNext();

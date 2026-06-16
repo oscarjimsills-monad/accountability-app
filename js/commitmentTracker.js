@@ -256,7 +256,7 @@ const CommitmentTracker = {
 
         // Evening date is same as or later than last morning date →
         // a new morning is needed (morning date will be set to lastEveningCheckin + 1)
-        return lastEveningCheckin > (lastCheckin || '');
+        return lastEveningCheckin >= (lastCheckin || '') && logDate > lastEveningCheckin;
     },
 
     needsWeeklyReview() {

@@ -1011,16 +1011,16 @@ const App = {
         // making each week exactly 8 cards: [Sun][Review][Sat][Fri] / [Thu][Wed][Tue][Mon]
         const items = [];
         for (const date of dates) {
-            items.push({ type: 'day', date });
             const d = new Date(date + 'T12:00:00');
             if (d.getDay() === 0) {
-                // This is a Sunday — insert the review for the Mon-Sun week that just ended.
-                // Week key is the Monday of this week.
+                // This is a Sunday — insert the review card BEFORE Sunday so the
+                // order is: [Review] → Sun → Sat → Fri → Thu → Wed → Tue → Mon
                 const monday = new Date(d);
                 monday.setDate(d.getDate() - 6);
                 const weekKey = Utils.getDateString(monday);
                 items.push({ type: 'weekly-review', weekKey, sunday: date });
             }
+            items.push({ type: 'day', date });
         }
 
         container.innerHTML = `

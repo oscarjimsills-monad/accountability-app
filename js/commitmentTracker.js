@@ -313,8 +313,18 @@ const CommitmentTracker = {
      */
     needsEveningCheckin() {
         const lastEveningCheckin = StorageManager.getLastEveningCheckin();
+        if (!lastEveningCheckin) return true;
+
+        // Button should disappear once you've logged "yesterday" or "today".
+        // Previously this checked !== logDate (today), which meant if you confirmed
+        // a past date (e.g. "June 14" at 2am on June 16), the button immediately
+        // reappeared and let you do a second check-in that overwrote the first.
+        // Fix: hidden if lastEveningCheckin >= yesterday (i.e. at most one day behind).
         const logDate = Utils.getLogDateString();
-        return lastEveningCheckin !== logDate;
+        const yesterday = new Date(logDate + 'T12:00:00');
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = Utils.getDateString(yesterday);
+        return lastEveningCheckin < yesterdayStr;
     },
 
     /**

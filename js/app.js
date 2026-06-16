@@ -995,6 +995,7 @@ const App = {
     renderHistoryView() {
         const container = document.getElementById('main-content');
         const allCommitments = StorageManager.getAllCommitments();
+        const weeklyReviews = StorageManager.getWeeklyReviews();
         const existingDates = Object.keys(allCommitments).sort();
         const firstDate = existingDates.length > 0 ? existingDates[0] : Utils.getLogDateString();
         const dates = [];
@@ -1003,20 +1004,75 @@ const App = {
             dates.push(Utils.getDateString(d));
         }
         dates.reverse();
-        
+
+        // Build a flat list of items in reverse chronological order.
+        // After each Sunday (getDay() === 0) insert a weekly-review marker for that week.
+        // This places the review card between Sunday and Saturday in the 4-column grid,
+        // making each week exactly 8 cards: [Sun][Review][Sat][Fri] / [Thu][Wed][Tue][Mon]
+        const items = [];
+        for (const date of dates) {
+            items.push({ type: 'day', date });
+            const d = new Date(date + 'T12:00:00');
+            if (d.getDay() === 0) {
+                // This is a Sunday — insert the review for the Mon-Sun week that just ended.
+                // Week key is the Monday of this week.
+                const monday = new Date(d);
+                monday.setDate(d.getDate() - 6);
+                const weekKey = Utils.getDateString(monday);
+                items.push({ type: 'weekly-review', weekKey, sunday: date });
+            }
+        }
+
         container.innerHTML = `
             <div class="view-header">
                 <h1>📅 History</h1>
                 <p class="subtitle">Browse your previous days and accountability records</p>
             </div>
-            
+
             <div class="history-calendar">
-                ${dates.length > 0 ? dates.map(date => {
+                ${items.length > 0 ? items.map(item => {
+                    if (item.type === 'weekly-review') {
+                        const review = weeklyReviews[item.weekKey];
+                        const mondayObj = new Date(item.weekKey + 'T12:00:00');
+                        const sundayObj = new Date(item.sunday + 'T12:00:00');
+                        const fmt = d => `${d.getDate()}/${d.getMonth() + 1}`;
+                        const hasReview = !!review;
+                        return `
+                            <div class="history-day-card history-weekly-review-card ${hasReview ? 'has-data' : 'no-data'}"
+                                 onclick="App.showWeeklyReviewDetail('${item.weekKey}')">
+                                <div class="day-header">
+                                    <div class="day-date">
+                                        <div class="day-weekday">Week</div>
+                                        <div class="day-number" style="font-size:0.85rem">${fmt(mondayObj)}–${fmt(sundayObj)}</div>
+                                    </div>
+                                    <div class="day-status">${hasReview ? '📋' : '⏳'}</div>
+                                </div>
+                                <div class="day-summary">
+                                    ${hasReview ? `
+                                        ${review.goals?.length ? `
+                                            <div class="summary-item">
+                                                <span class="summary-icon">🎯</span>
+                                                <span class="summary-text">${review.goals.length} goal${review.goals.length !== 1 ? 's' : ''} set</span>
+                                            </div>
+                                        ` : ''}
+                                        ${review.wins ? `
+                                            <div class="summary-item">
+                                                <span class="summary-icon">✨</span>
+                                                <span class="summary-text">${Utils.escapeHtml(review.wins.slice(0, 60))}${review.wins.length > 60 ? '…' : ''}</span>
+                                            </div>
+                                        ` : ''}
+                                    ` : '<p class="no-data-text">No review logged</p>'}
+                                </div>
+                            </div>
+                        `;
+                    }
+
+                    // Regular day card — unchanged
+                    const { date } = item;
                     const commitment = allCommitments[date];
                     const screentimeEntry = ScreentimeTracker.getEntry(date);
                     const wakeupMet = commitment?.wakeup?.met;
                     const hasData = commitment?.wakeup?.actual || screentimeEntry;
-                    
                     return `
                         <div class="history-day-card ${hasData ? 'has-data' : 'no-data'}"
                              onclick="App.showDayDetail('${date}')">
@@ -1681,6 +1737,64 @@ const App = {
         `;
     },
     
+/**
+ * Show detail view for a weekly review card
+ */
+showWeeklyReviewDetail(weekKey) {
+    const container = document.getElementById('main-content');
+    const review = StorageManager.getWeeklyReviews()[weekKey];
+    const monday = new Date(weekKey + 'T12:00:00');
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+
+    container.innerHTML = `
+        <div class="view-header">
+            <button class="btn btn-secondary" onclick="App.showView('history')">
+                ← Back to History
+            </button>
+            <h1>📋 Week of ${fmt(monday)} – ${fmt(sunday)}</h1>
+        </div>
+
+        ${review ? `
+            <div class="day-detail-grid">
+                ${review.wins ? `
+                    <div class="detail-section">
+                        <h3>✨ What went well</h3>
+                        <p>${Utils.escapeHtml(review.wins)}</p>
+                    </div>
+                ` : ''}
+                ${review.struggles ? `
+                    <div class="detail-section">
+                        <h3>⚠️ Struggles</h3>
+                        <p>${Utils.escapeHtml(review.struggles)}</p>
+                    </div>
+                ` : ''}
+                ${review.goals?.length ? `
+                    <div class="detail-section">
+                        <h3>🎯 Goals set for next week</h3>
+                        <ul class="review-goals-list">
+                            ${review.goals.map(g => `
+                                <li class="${g.completed ? 'completed' : ''}">
+                                    ${g.completed ? '✅' : '⬜'} ${Utils.escapeHtml(g.title)}
+                                </li>
+                            `).join('')}
+                        </ul>
+                    </div>
+                ` : ''}
+                <div class="detail-section">
+                    <h3>🗓️ Completed</h3>
+                    <p>${review.completedAt ? new Date(review.completedAt).toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit' }) : '—'}</p>
+                </div>
+            </div>
+        ` : `
+            <div class="empty-state">
+                <p>No weekly review was logged for this week.</p>
+            </div>
+        `}
+    `;
+},
+
 /**
  * Show edit modal for a historical day
  */

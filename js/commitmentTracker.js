@@ -255,10 +255,18 @@ const CommitmentTracker = {
         if (!lastEveningCheckin) return false;
 
         const logDate = Utils.getLogDateString();
+        const yesterday = new Date(logDate + 'T12:00:00');
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = Utils.getDateString(yesterday);
 
-        // Evening date is same as or later than last morning date →
-        // a new morning is needed (morning date will be set to lastEveningCheckin + 1)
-        return lastEveningCheckin >= (lastCheckin || '') && logDate > lastEveningCheckin;
+        // Three conditions must all be true:
+        // 1. A new evening has happened since the last morning (>= handles same-date cycle)
+        // 2. We're on a new log day after that evening (prevents immediate re-fire at 3am)
+        // 3. The evening was recent — yesterday or today — so a stale evening from
+        //    days ago doesn't keep triggering morning on every app open
+        return lastEveningCheckin >= (lastCheckin || '')
+            && logDate > lastEveningCheckin
+            && lastEveningCheckin >= yesterdayStr;
     },
 
     needsWeeklyReview() {

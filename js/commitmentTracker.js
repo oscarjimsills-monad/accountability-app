@@ -254,6 +254,8 @@ const CommitmentTracker = {
         // No evening check-in ever recorded — first-time user, show evening button first
         if (!lastEveningCheckin) return false;
 
+        const logDate = Utils.getLogDateString();
+
         // Evening date is same as or later than last morning date →
         // a new morning is needed (morning date will be set to lastEveningCheckin + 1)
         return lastEveningCheckin >= (lastCheckin || '') && logDate > lastEveningCheckin;

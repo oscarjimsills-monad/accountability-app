@@ -1,25 +1,26 @@
 /**
  * Prompt Flow Styles
- * Styling for morning/evening check-in flows
+ * Morning / evening check-in screens.
+ * All colours come from css/theme.css variables.
  */
 
-/* Prompt Container */
+/* ─── Outer Container ─────────────────────────────────────────────────────── */
 .prompt-container {
     min-height: 100vh;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--prompt-bg);
     display: flex;
     flex-direction: column;
     padding: 2rem;
 }
 
-/* Progress Bar */
+/* ─── Progress Bar ────────────────────────────────────────────────────────── */
 .prompt-progress {
     margin-bottom: 2rem;
 }
 
 .progress-bar {
     height: 4px;
-    background: rgba(255, 255, 255, 0.2);
+    background: var(--prompt-track);
     border-radius: 2px;
     overflow: hidden;
     margin-bottom: 0.5rem;
@@ -27,17 +28,16 @@
 
 .progress-fill {
     height: 100%;
-    background: white;
+    background: var(--prompt-fill);
     transition: width 0.3s ease;
 }
 
 .step-indicator {
-    color: white;
+    color: var(--prompt-step);
     font-size: 0.85rem;
-    opacity: 0.9;
 }
 
-/* Prompt Content */
+/* ─── Content Area ────────────────────────────────────────────────────────── */
 .prompt-content {
     flex: 1;
     display: flex;
@@ -47,39 +47,34 @@
 }
 
 .prompt-screen {
-    background: var(--surface);
+    background: var(--prompt-card);
+    border: 1px solid var(--prompt-card-border);
     border-radius: 12px;
     padding: 2.5rem;
     max-width: 600px;
     width: 100%;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    box-shadow: var(--prompt-card-shadow);
     animation: slideIn 0.3s ease;
 }
 
 @keyframes slideIn {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
-    }
-    to {
-        opacity: 1;
-        transform: translateY(0);
-    }
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 .prompt-screen h2 {
     font-size: 1.75rem;
     margin-bottom: 0.5rem;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
 .prompt-screen .subtitle {
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
     margin-bottom: 2rem;
     font-size: 1rem;
 }
 
-/* Mood Options */
+/* ─── Mood Buttons ────────────────────────────────────────────────────────── */
 .mood-options {
     display: flex;
     gap: 1rem;
@@ -93,9 +88,9 @@
     align-items: center;
     gap: 0.5rem;
     padding: 1rem;
-    border: 2px solid var(--border-color);
-    background: var(--surface);
-    color: var(--text-primary);
+    border: 2px solid var(--mood-btn-border);
+    background: var(--mood-btn-bg);
+    color: var(--prompt-text);
     border-radius: var(--radius);
     cursor: pointer;
     transition: var(--transition);
@@ -103,27 +98,27 @@
 }
 
 .mood-btn:hover {
-    border-color: var(--primary-color);
+    border-color: var(--mood-btn-hover-border);
     transform: translateY(-2px);
 }
 
 .mood-btn.selected {
-    border-color: var(--primary-color);
-    background: rgba(37, 99, 235, 0.1);
+    border-color: var(--mood-btn-selected-border);
+    background: var(--mood-btn-selected-bg);
 }
 
-.mood-emoji {
-    font-size: 2rem;
-}
+.mood-emoji { font-size: 2rem; }
 
 .mood-label {
     font-size: 0.85rem;
     font-weight: 500;
+    color: var(--prompt-text);
 }
 
-/* Commitment Box */
+/* ─── Commitment Boxes ────────────────────────────────────────────────────── */
 .commitment-box {
-    background: var(--background);
+    background: var(--commit-box-bg);
+    border: 1px solid var(--commit-box-border);
     border-radius: var(--radius);
     padding: 1.5rem;
     text-align: center;
@@ -131,7 +126,7 @@
 }
 
 .commitment-label {
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
     font-size: 0.9rem;
     margin-bottom: 0.5rem;
 }
@@ -143,8 +138,8 @@
 }
 
 .commitment-reminder {
-    background: rgba(37, 99, 235, 0.1);
-    border-left: 3px solid var(--primary-color);
+    background: var(--commit-reminder-bg);
+    border-left: 3px solid var(--commit-reminder-border);
     padding: 1rem;
     border-radius: 4px;
     margin-top: 1rem;
@@ -153,11 +148,12 @@
 .commitment-reminder p {
     margin: 0;
     font-size: 0.9rem;
+    color: var(--prompt-text);
 }
 
 .commitment-warning {
-    background: rgba(245, 158, 11, 0.1);
-    border-left: 3px solid var(--warning-color);
+    background: var(--commit-warning-bg);
+    border-left: 3px solid var(--commit-warning-border);
     padding: 1rem;
     border-radius: 4px;
     margin-top: 1.5rem;
@@ -166,17 +162,17 @@
 .commitment-warning p {
     margin: 0;
     font-size: 0.9rem;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
-/* Excuse Section */
+/* ─── Excuse Section ──────────────────────────────────────────────────────── */
 #excuse-section {
     margin-top: 1rem;
     padding-top: 1rem;
     border-top: 1px solid var(--border-color);
 }
 
-/* Obligations */
+/* ─── Obligations in Flow ─────────────────────────────────────────────────── */
 .obligations-list {
     margin-bottom: 1rem;
 }
@@ -186,7 +182,8 @@
     align-items: center;
     justify-content: space-between;
     padding: 0.75rem;
-    background: var(--background);
+    background: var(--obligation-item-bg);
+    border: 1px solid var(--obligation-item-border);
     border-radius: var(--radius);
     margin-bottom: 0.5rem;
 }
@@ -199,14 +196,15 @@
 
 .obligation-title {
     font-weight: 500;
+    color: var(--prompt-text);
 }
 
 .obligation-time {
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
 }
 
-/* Day Selector */
+/* ─── Day Selector ────────────────────────────────────────────────────────── */
 .day-selector {
     display: flex;
     gap: 0.5rem;
@@ -218,7 +216,9 @@
     align-items: center;
     gap: 0.25rem;
     padding: 0.5rem 0.75rem;
-    border: 1px solid var(--border-color);
+    border: 1px solid var(--day-selector-border);
+    background: var(--day-selector-bg);
+    color: var(--prompt-text);
     border-radius: var(--radius);
     cursor: pointer;
     transition: var(--transition);
@@ -226,14 +226,15 @@
 }
 
 .day-selector label:hover {
-    border-color: var(--primary-color);
+    border-color: var(--day-selector-hover-border);
+    color: var(--day-selector-hover-color);
 }
 
 .day-selector input[type="checkbox"] {
     cursor: pointer;
 }
 
-/* Sleep Calculation */
+/* ─── Sleep Calculation ───────────────────────────────────────────────────── */
 .sleep-calculation {
     margin-top: 1rem;
 }
@@ -246,21 +247,21 @@
 }
 
 .sleep-good {
-    background: rgba(16, 185, 129, 0.1);
+    background: var(--success-bg);
     color: var(--success-color);
 }
 
 .sleep-okay {
-    background: rgba(245, 158, 11, 0.1);
+    background: var(--warning-bg);
     color: var(--warning-color);
 }
 
 .sleep-bad {
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--error-bg);
     color: var(--error-color);
 }
 
-/* Summary Screen */
+/* ─── Summary Screen ──────────────────────────────────────────────────────── */
 .summary-screen {
     max-width: 700px;
 }
@@ -273,13 +274,13 @@
     font-size: 1rem;
     font-weight: 600;
     margin-bottom: 0.5rem;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
 .summary-value {
     font-size: 1.5rem;
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--summary-value-color);
 }
 
 .summary-list {
@@ -289,19 +290,18 @@
 
 .summary-list li {
     padding: 0.5rem 0;
-    border-bottom: 1px solid var(--border-color);
+    border-bottom: 1px solid var(--summary-list-border);
+    color: var(--prompt-text);
 }
 
-.summary-list li:last-child {
-    border-bottom: none;
-}
+.summary-list li:last-child { border-bottom: none; }
 
 .summary-list li.empty {
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
     font-style: italic;
 }
 
-/* Ready Screen */
+/* ─── Ready / Welcome Back Screens ───────────────────────────────────────── */
 .ready-screen {
     text-align: center;
 }
@@ -319,33 +319,31 @@
     align-items: center;
     gap: 0.5rem;
     padding: 1.5rem;
-    background: var(--background);
+    background: var(--stat-in-flow-bg);
+    border: 1px solid var(--stat-in-flow-border);
     border-radius: var(--radius);
     min-width: 120px;
 }
 
-.stat-icon {
-    font-size: 2rem;
-}
+.stat-icon { font-size: 2rem; }
 
 .stat-number {
     font-size: 2rem;
     font-weight: 700;
-    color: var(--primary-color);
+    color: var(--stat-number-color);
 }
 
 .stat-text {
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
 }
 
 .motivational-text {
     font-size: 1.1rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
     margin-top: 1rem;
 }
 
-/* Welcome Back */
 .welcome-back {
     text-align: center;
 }
@@ -367,14 +365,15 @@
 .stats-quick .stat-value {
     font-size: 2rem;
     font-weight: 700;
+    color: var(--stat-number-color);
 }
 
 .stats-quick .stat-label {
     font-size: 0.85rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
 }
 
-/* Prompt Navigation */
+/* ─── Navigation ──────────────────────────────────────────────────────────── */
 .prompt-navigation {
     display: flex;
     gap: 1rem;
@@ -386,7 +385,29 @@
     min-width: 120px;
 }
 
-/* Milestone Input */
+/* Override btn colours inside the prompt flow */
+.prompt-navigation .btn-secondary {
+    background: var(--prompt-btn-secondary-bg);
+    border-color: var(--prompt-btn-secondary-border);
+    color: var(--prompt-btn-secondary-color);
+}
+
+.prompt-navigation .btn-primary {
+    background: var(--prompt-btn-primary-bg);
+    border-color: var(--prompt-btn-primary-bg);
+    color: var(--prompt-btn-primary-color);
+}
+
+.prompt-navigation .btn-primary:hover {
+    background: var(--prompt-btn-primary-hover);
+    border-color: var(--prompt-btn-primary-hover);
+}
+
+.prompt-navigation .btn-text {
+    color: var(--prompt-btn-text-color);
+}
+
+/* ─── Milestone Input ─────────────────────────────────────────────────────── */
 .milestone-input {
     display: flex;
     gap: 0.5rem;
@@ -397,28 +418,26 @@
     flex: 1;
 }
 
-/* Timer Widget */
+/* ─── Timer Widget ────────────────────────────────────────────────────────── */
 .timer-widget {
     background: var(--surface);
+    border: 1px solid var(--border-color);
     border-radius: var(--radius);
     padding: 2rem;
     box-shadow: var(--shadow);
     margin-bottom: 2rem;
 }
 
-.active-timer {
-    text-align: center;
-}
+.active-timer { text-align: center; }
 
-.timer-info {
-    margin-bottom: 1rem;
-}
+.timer-info { margin-bottom: 1rem; }
 
 .timer-activity {
     font-size: 1.25rem;
     font-weight: 600;
     display: block;
     margin-bottom: 0.25rem;
+    color: var(--text-primary);
 }
 
 .timer-category {
@@ -446,14 +465,10 @@
     align-items: flex-end;
 }
 
-.start-timer .input-text {
-    flex: 1;
-}
+.start-timer .input-text { flex: 1; }
 
-/* Settings View */
-.settings-view {
-    max-width: 800px;
-}
+/* ─── Settings ────────────────────────────────────────────────────────────── */
+.settings-view { max-width: 800px; }
 
 .settings-section {
     background: var(--surface);
@@ -461,11 +476,13 @@
     padding: 1.5rem;
     margin-bottom: 1.5rem;
     box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
 }
 
 .settings-section h2 {
     font-size: 1.25rem;
     margin-bottom: 1rem;
+    color: var(--text-primary);
 }
 
 .settings-actions {
@@ -483,6 +500,7 @@
 .storage-info h3 {
     font-size: 1rem;
     margin-bottom: 0.5rem;
+    color: var(--text-primary);
 }
 
 .storage-breakdown {
@@ -491,44 +509,20 @@
     color: var(--text-secondary);
 }
 
-.storage-breakdown li {
-    padding: 0.25rem 0;
-}
+.storage-breakdown li { padding: 0.25rem 0; }
 
-.danger-zone {
-    border: 2px solid var(--error-color);
-}
+.danger-zone { border: 2px solid var(--error-color); }
+.danger-zone h2 { color: var(--error-color); }
 
-.danger-zone h2 {
-    color: var(--error-color);
-}
+/* ─── Dashboard ───────────────────────────────────────────────────────────── */
+.dashboard { max-width: 1200px; }
 
-/* Dashboard */
-.dashboard {
-    max-width: 1200px;
-}
+.dashboard-header { margin-bottom: 2rem; }
+.dashboard-header h1 { font-size: 2rem; margin-bottom: 0.25rem; color: var(--text-primary); }
+.dashboard-date  { color: var(--text-secondary); }
 
-.dashboard-header {
-    margin-bottom: 2rem;
-}
-
-.dashboard-header h1 {
-    font-size: 2rem;
-    margin-bottom: 0.25rem;
-}
-
-.dashboard-date {
-    color: var(--text-secondary);
-}
-
-.dashboard-section {
-    margin-bottom: 2.5rem;
-}
-
-.dashboard-section h2 {
-    font-size: 1.5rem;
-    margin-bottom: 1rem;
-}
+.dashboard-section { margin-bottom: 2.5rem; }
+.dashboard-section h2 { font-size: 1.5rem; margin-bottom: 1rem; color: var(--text-primary); }
 
 .stats-grid {
     display: grid;
@@ -536,45 +530,34 @@
     gap: 1rem;
 }
 
-.stat-card {
+/* stat-card as a layout card on the dashboard (different from the flow stat-card above) */
+.stats-grid .stat-card,
+.today-card {
     background: var(--surface);
     border-radius: var(--radius);
     padding: 1.5rem;
     box-shadow: var(--shadow);
+    border: 1px solid var(--border-color);
     display: flex;
     align-items: center;
     gap: 1rem;
 }
 
-.stat-card.highlight {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-    color: white;
+.stats-grid .stat-card.highlight {
+    background: var(--stat-highlight-bg);
+    color: var(--stat-highlight-color);
+    border-color: transparent;
 }
 
-.stat-card.highlight .stat-value,
-.stat-card.highlight .stat-label {
-    color: white;
+.stats-grid .stat-card.highlight .stat-value,
+.stats-grid .stat-card.highlight .stat-label {
+    color: var(--stat-highlight-color);
 }
 
-.stat-card .stat-icon {
-    font-size: 2rem;
-}
-
-.stat-card .stat-content {
-    flex: 1;
-}
-
-.stat-card .stat-value {
-    font-size: 1.75rem;
-    font-weight: 700;
-    display: block;
-}
-
-.stat-card .stat-label {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    display: block;
-}
+.stats-grid .stat-card .stat-icon { font-size: 2rem; }
+.stats-grid .stat-card .stat-content { flex: 1; }
+.stats-grid .stat-card .stat-value { font-size: 1.75rem; font-weight: 700; display: block; color: var(--text-primary); }
+.stats-grid .stat-card .stat-label { font-size: 0.85rem; color: var(--text-secondary); display: block; }
 
 .today-grid {
     display: grid;
@@ -583,9 +566,9 @@
 }
 
 .today-card {
-    background: var(--surface);
-    border-radius: var(--radius);
-    box-shadow: var(--shadow);
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
     overflow: hidden;
 }
 
@@ -600,11 +583,10 @@
 .today-card-header h3 {
     font-size: 1.1rem;
     font-weight: 600;
+    color: var(--text-primary);
 }
 
-.today-card-body {
-    padding: 1.5rem;
-}
+.today-card-body { padding: 1.5rem; }
 
 .today-card-footer {
     padding: 1rem 1.5rem;
@@ -619,19 +601,17 @@
     font-weight: 500;
 }
 
-.today-card-footer a:hover {
-    text-decoration: underline;
-}
+.today-card-footer a:hover { text-decoration: underline; }
 
 .commitment-preview {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: var(--commit-preview-bg);
     border-radius: var(--radius);
     padding: 2rem;
-    color: white;
+    border: 1px solid var(--border-color);
 }
 
 .commitment-preview h2 {
-    color: white;
+    color: var(--commit-preview-h2);
     margin-bottom: 1.5rem;
 }
 
@@ -645,22 +625,19 @@
     display: flex;
     align-items: center;
     gap: 1rem;
-    background: rgba(255, 255, 255, 0.1);
+    background: var(--commit-item-bg);
+    border: 1px solid var(--commit-item-border);
     padding: 1rem;
     border-radius: var(--radius);
 }
 
-.commitment-icon {
-    font-size: 2rem;
-}
-
-.commitment-details {
-    flex: 1;
-}
+.commitment-icon { font-size: 2rem; }
+.commitment-details { flex: 1; }
 
 .commitment-details .commitment-label {
     font-size: 0.85rem;
-    opacity: 0.9;
+    color: var(--commit-preview-h2);
+    opacity: 0.85;
     display: block;
     margin-bottom: 0.25rem;
 }
@@ -669,35 +646,35 @@
     font-size: 1.25rem;
     font-weight: 600;
     display: block;
+    color: var(--commit-preview-h2);
 }
 
-/* Screentime Prompt Styles */
+/* ─── Screentime Prompt Styles ────────────────────────────────────────────── */
 .daily-goal-info {
     margin-top: 1rem;
     padding: 0.75rem;
-    background: var(--bg-secondary);
+    background: var(--app-form-bg);
+    border: 1px solid var(--app-form-border);
     border-radius: 8px;
     text-align: center;
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
 }
 
-.daily-goal-info p {
-    margin: 0;
-}
+.daily-goal-info p { margin: 0; }
 
 .screentime-total {
     padding: 1.5rem;
-    background: var(--bg-secondary);
+    background: var(--screentime-total-bg);
+    border: 2px solid var(--screentime-total-border);
     border-radius: 12px;
     margin-bottom: 1.5rem;
     text-align: center;
-    border: 2px solid var(--border-color);
 }
 
 .screentime-total.over-goal {
     border-color: var(--danger-color);
-    background: rgba(239, 68, 68, 0.1);
+    background: var(--error-bg);
 }
 
 .total-time {
@@ -710,31 +687,23 @@
 .time-value {
     font-size: 2rem;
     font-weight: 700;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
 .time-label {
     font-size: 0.9rem;
-    color: var(--text-secondary);
+    color: var(--prompt-subtitle);
 }
 
-.goal-status {
-    margin-top: 0.5rem;
-}
+.goal-status { margin-top: 0.5rem; }
 
-.status-warning {
-    color: var(--danger-color);
-    font-weight: 600;
-}
-
-.status-good {
-    color: var(--success-color);
-    font-weight: 600;
-}
+.status-warning { color: var(--danger-color); font-weight: 600; }
+.status-good    { color: var(--success-color); font-weight: 600; }
 
 .add-app-form {
     padding: 1.5rem;
-    background: var(--bg-secondary);
+    background: var(--app-form-bg);
+    border: 1px solid var(--app-form-border);
     border-radius: 12px;
     margin-bottom: 1.5rem;
 }
@@ -742,17 +711,15 @@
 .add-app-form h3 {
     margin: 0 0 1rem 0;
     font-size: 1.1rem;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
-.apps-list {
-    margin-bottom: 1.5rem;
-}
+.apps-list { margin-bottom: 1.5rem; }
 
 .apps-list h3 {
     margin: 0 0 1rem 0;
     font-size: 1.1rem;
-    color: var(--text-primary);
+    color: var(--prompt-text);
 }
 
 .app-item {
@@ -760,10 +727,10 @@
     justify-content: space-between;
     align-items: center;
     padding: 1rem;
-    background: var(--bg-secondary);
+    background: var(--app-form-bg);
+    border: 1px solid var(--app-form-border);
     border-radius: 8px;
     margin-bottom: 0.5rem;
-    border: 1px solid var(--border-color);
 }
 
 .app-info {
@@ -773,28 +740,20 @@
     flex: 1;
 }
 
-.app-name {
-    font-weight: 600;
-    color: var(--text-primary);
-}
-
-.app-time {
-    font-size: 0.9rem;
-    color: var(--text-secondary);
-}
+.app-name { font-weight: 600; color: var(--prompt-text); }
+.app-time { font-size: 0.9rem; color: var(--prompt-subtitle); }
 
 .empty-apps {
     padding: 2rem;
     text-align: center;
-    color: var(--text-secondary);
-    background: var(--bg-secondary);
+    color: var(--prompt-subtitle);
+    background: var(--app-form-bg);
+    border: 1px solid var(--app-form-border);
     border-radius: 8px;
     margin-bottom: 1.5rem;
 }
 
-.empty-apps p {
-    margin: 0;
-}
+.empty-apps p { margin: 0; }
 
 .btn-icon {
     background: none;
@@ -802,197 +761,11 @@
     font-size: 1.2rem;
     cursor: pointer;
     padding: 0.5rem;
+    color: var(--prompt-subtitle);
     opacity: 0.7;
     transition: opacity 0.2s;
 }
 
-.btn-icon:hover {
-    opacity: 1;
-}
-
-/* ─── Dark Mode — Check-in & Prompt Screens ──────────────────────────────── */
-/*
-   Palette drawn from the World Cup app:
-   bg        #0d1b2a   deep navy page background
-   surface   #162032   card base
-   surface2  #1e2f45   inset / secondary surface
-   border    #2a3f5a   subtle border
-   primary   #c8a951   gold accent
-   text      #e8eaf0   primary text
-   muted     #7a8898   secondary text
-*/
-
-/* Replace the purple gradient background with deep navy */
-[data-theme="dark"] .prompt-container {
-    background: #0d1b2a;
-}
-
-/* Progress bar track and fill */
-[data-theme="dark"] .progress-bar {
-    background: #2a3f5a;
-}
-[data-theme="dark"] .progress-fill {
-    background: #c8a951;
-}
-[data-theme="dark"] .step-indicator {
-    color: #7a8898;
-}
-
-/* Card surface — two-level depth like the World Cup app */
-[data-theme="dark"] .prompt-screen {
-    background: #162032;
-    border: 1px solid #2a3f5a;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.6);
-}
-[data-theme="dark"] .prompt-screen h2 {
-    color: #e8eaf0;
-}
-[data-theme="dark"] .prompt-screen .subtitle {
-    color: #7a8898;
-}
-
-/* Nav buttons at the bottom of the flow */
-[data-theme="dark"] .prompt-navigation .btn-secondary {
-    background: #1e2f45;
-    border-color: #2a3f5a;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .prompt-navigation .btn-primary {
-    background: #c8a951;
-    color: #0d1b2a;
-    border-color: #c8a951;
-}
-[data-theme="dark"] .prompt-navigation .btn-primary:hover {
-    background: #dbb85e;
-}
-[data-theme="dark"] .prompt-navigation .btn-text {
-    color: #7a8898;
-}
-
-/* Mood buttons */
-[data-theme="dark"] .mood-btn {
-    background: #1e2f45;
-    border-color: #2a3f5a;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .mood-btn:hover {
-    border-color: #c8a951;
-}
-[data-theme="dark"] .mood-btn.selected {
-    border-color: #c8a951;
-    background: rgba(200, 169, 81, 0.12);
-}
-
-/* Commitment boxes */
-[data-theme="dark"] .commitment-box {
-    background: #1e2f45;
-    border: 1px solid #2a3f5a;
-}
-[data-theme="dark"] .commitment-label {
-    color: #7a8898;
-}
-[data-theme="dark"] .commitment-value {
-    color: #c8a951;
-}
-[data-theme="dark"] .commitment-reminder {
-    background: rgba(200, 169, 81, 0.08);
-    border-left-color: #c8a951;
-}
-[data-theme="dark"] .commitment-warning {
-    background: rgba(224, 85, 85, 0.1);
-    border-left-color: #e05555;
-}
-
-/* Obligation items inside check-in */
-[data-theme="dark"] .obligation-item {
-    background: #1e2f45;
-    border: 1px solid #2a3f5a;
-}
-
-/* Day selector chips */
-[data-theme="dark"] .day-selector label {
-    background: #1e2f45;
-    border-color: #2a3f5a;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .day-selector label:hover {
-    border-color: #c8a951;
-    color: #c8a951;
-}
-
-/* Stat cards inside the flow (summary / ready screens) */
-[data-theme="dark"] .prompt-screen .stat-card,
-[data-theme="dark"] .stats-summary .stat-card,
-[data-theme="dark"] .stats-quick .stat-item {
-    background: #1e2f45;
-    border: 1px solid #2a3f5a;
-}
-[data-theme="dark"] .stat-number,
-[data-theme="dark"] .stats-quick .stat-value {
-    color: #c8a951;
-}
-[data-theme="dark"] .stat-text,
-[data-theme="dark"] .stats-quick .stat-label {
-    color: #7a8898;
-}
-
-/* Highlight stat card & commitment preview — replace purple gradient */
-[data-theme="dark"] .stat-card.highlight {
-    background: linear-gradient(135deg, #162032 0%, #1e2f45 100%);
-    border: 1px solid #c8a951;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .stat-card.highlight .stat-value,
-[data-theme="dark"] .stat-card.highlight .stat-label {
-    color: #e8eaf0;
-}
-[data-theme="dark"] .commitment-preview {
-    background: linear-gradient(135deg, #0d1b2a 0%, #162032 100%);
-    border: 1px solid #2a3f5a;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .commitment-preview h2 {
-    color: #c8a951;
-}
-[data-theme="dark"] .commitment-item {
-    background: rgba(200, 169, 81, 0.06);
-    border: 1px solid #2a3f5a;
-}
-
-/* Screentime inputs inside check-in */
-[data-theme="dark"] .screentime-total {
-    background: #1e2f45;
-    border-color: #2a3f5a;
-}
-[data-theme="dark"] .add-app-form,
-[data-theme="dark"] .empty-apps,
-[data-theme="dark"] .app-item,
-[data-theme="dark"] .daily-goal-info {
-    background: #1e2f45;
-    border-color: #2a3f5a;
-}
-
-/* Summary / ready screen lists */
-[data-theme="dark"] .summary-section h3 {
-    color: #e8eaf0;
-}
-[data-theme="dark"] .summary-value {
-    color: #c8a951;
-}
-[data-theme="dark"] .summary-list li {
-    border-bottom-color: #2a3f5a;
-    color: #e8eaf0;
-}
-[data-theme="dark"] .summary-list li.empty {
-    color: #7a8898;
-}
-[data-theme="dark"] .motivational-text {
-    color: #7a8898;
-}
-
-/* Date confirm screen (new step 0 of evening flow) */
-[data-theme="dark"] .date-confirm-screen {
-    background: #162032;
-}
+.btn-icon:hover { opacity: 1; }
 
 /* Made with Bob */

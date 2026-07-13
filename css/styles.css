@@ -1,47 +1,8 @@
 /**
  * Main Styles
- * Core styling and layout
+ * Core layout and structural CSS only.
+ * All colours come from css/theme.css — no hardcoded colour values here.
  */
-
-/* CSS Variables */
-:root {
-    --primary-color: #2563eb;
-    --primary-dark: #1e40af;
-    --secondary-color: #64748b;
-    --success-color: #10b981;
-    --warning-color: #f59e0b;
-    --error-color: #ef4444;
-    --danger-color: #ef4444;
-    --background: #f8fafc;
-    --bg-secondary: #f1f5f9;
-    --surface: #ffffff;
-    --text-primary: #0f172a;
-    --text-secondary: #64748b;
-    --border-color: #e2e8f0;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.1);
-    --radius: 8px;
-    --transition: all 0.2s ease;
-}
-
-/* Dark Mode */
-[data-theme="dark"] {
-    --primary-color: #3b82f6;
-    --primary-dark: #2563eb;
-    --secondary-color: #94a3b8;
-    --success-color: #34d399;
-    --warning-color: #fbbf24;
-    --error-color: #f87171;
-    --danger-color: #f87171;
-    --background: #0f172a;
-    --bg-secondary: #1e293b;
-    --surface: #263348;
-    --text-primary: #f1f5f9;
-    --text-secondary: #94a3b8;
-    --border-color: #334155;
-    --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5);
-}
 
 /* Reset */
 * {
@@ -263,6 +224,7 @@ body {
     padding: 0.5rem 1rem;
     border: 1px solid var(--border-color);
     background: var(--surface);
+    color: var(--text-primary);
     border-radius: var(--radius);
     cursor: pointer;
     transition: var(--transition);
@@ -276,7 +238,7 @@ body {
 
 .filter-btn.active {
     background: var(--primary-color);
-    color: white;
+    color: var(--text-on-primary);
     border-color: var(--primary-color);
 }
 
@@ -342,6 +304,7 @@ body {
 
 .toast {
     background: var(--surface);
+    color: var(--text-primary);
     padding: 1rem 1.5rem;
     border-radius: var(--radius);
     box-shadow: var(--shadow-lg);
@@ -356,30 +319,19 @@ body {
     transform: translateX(0);
 }
 
-.toast-success {
-    border-left: 4px solid var(--success-color);
-}
+.toast-success { border-left: 4px solid var(--success-color); }
+.toast-error   { border-left: 4px solid var(--error-color); }
+.toast-warning { border-left: 4px solid var(--warning-color); }
+.toast-info    { border-left: 4px solid var(--primary-color); }
 
-.toast-error {
-    border-left: 4px solid var(--error-color);
-}
-
-.toast-warning {
-    border-left: 4px solid var(--warning-color);
-}
-
-.toast-info {
-    border-left: 4px solid var(--primary-color);
-}
-
-/* Modal Container */
+/* Modal */
 .modal-container {
     position: fixed;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(0, 0, 0, 0.5);
+    background: var(--bg-overlay);
     display: none;
     align-items: center;
     justify-content: center;
@@ -422,6 +374,7 @@ body {
 .modal-header h2 {
     font-size: 1.5rem;
     font-weight: 600;
+    color: var(--text-primary);
 }
 
 .btn-close {
@@ -456,13 +409,9 @@ body {
 }
 
 /* Utility Classes */
-.text-center {
-    text-align: center;
-}
-
-.text-muted {
-    color: var(--text-secondary);
-}
+.text-center { text-align: center; }
+.text-muted  { color: var(--text-secondary); }
+.muted       { color: var(--text-muted); }
 
 .mt-1 { margin-top: 0.5rem; }
 .mt-2 { margin-top: 1rem; }
@@ -470,31 +419,6 @@ body {
 .mb-1 { margin-bottom: 0.5rem; }
 .mb-2 { margin-bottom: 1rem; }
 .mb-3 { margin-bottom: 1.5rem; }
-
-/* Made with Bob */
-/* Dark mode input & form overrides */
-[data-theme="dark"] input,
-[data-theme="dark"] textarea,
-[data-theme="dark"] select {
-    background: #0f172a;
-    color: var(--text-primary);
-    border-color: var(--border-color);
-}
-
-[data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder {
-    color: var(--text-secondary);
-}
-
-[data-theme="dark"] .filter-btn {
-    background: var(--surface);
-    color: var(--text-primary);
-}
-
-[data-theme="dark"] .nav-link:hover,
-[data-theme="dark"] .nav-link.active {
-    background: #0f172a;
-}
 
 /* Auth Screen */
 .auth-screen {
@@ -595,3 +519,5 @@ body {
     color: var(--text-secondary);
     font-size: 0.8rem;
 }
+
+/* Made with Bob */

@@ -1248,9 +1248,9 @@ const App = {
                 })()}
                 
                 <!-- Screentime -->
-                ${screentimeEntry ? `
-                    <div class="detail-section">
-                        <h2>📱 Screentime</h2>
+                <div class="detail-section">
+                    <h2>📱 Screentime</h2>
+                    ${screentimeEntry ? `
                         <div class="detail-card ${screentimeEntry.totalMinutes <= 90 ? 'success' : 'warning'}">
                             <div class="detail-row">
                                 <span class="detail-label">Total:</span>
@@ -1268,15 +1268,26 @@ const App = {
                                         `).join('')}
                                     </div>
                                 </div>
-                            ` : ''}
+                            ` : '<div class="detail-row"><span class="detail-label muted">No app breakdown logged</span></div>'}
                             <div class="detail-actions">
                                 <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
                                     ✏️ Edit Apps
                                 </button>
                             </div>
                         </div>
-                    </div>
-                ` : ''}
+                    ` : `
+                        <div class="detail-card">
+                            <div class="detail-row">
+                                <span class="detail-label muted">No screentime logged</span>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
+                                    + Add Screentime
+                                </button>
+                            </div>
+                        </div>
+                    `}
+                </div>
                 
                 <!-- Time Tracking -->
                 ${timeEntries.length > 0 ? `
@@ -1542,6 +1553,7 @@ const App = {
         if (!date) return;
         if (this.tempEditApps.length === 0) { Utils.showError('Please add at least one app'); return; }
         const totalMinutes = this.tempEditApps.reduce((s, a) => s + a.minutes, 0);
+        if (totalMinutes === 0) { Utils.showError('Total screentime cannot be 0'); return; }
         const hours = Math.floor(totalMinutes / 60);
         const mins = totalMinutes % 60;
         const appsList = this.tempEditApps.map(a =>

@@ -115,6 +115,17 @@
     --day-selector-border:   #e2e8f0;
     --day-selector-hover-border: #2563eb;
     --day-selector-hover-color:  #2563eb;
+
+    /* --- Focus / Rating Buttons --- */
+    --focus-btn-bg:              #f1f5f9;
+    --focus-btn-border:          #e2e8f0;
+    --focus-btn-color:           #0f172a;
+    --focus-btn-hover-bg:        #e2e8f0;
+    --focus-btn-hover-border:    #2563eb;
+    --focus-btn-selected-bg:     rgba(37, 99, 235, 0.12);
+    --focus-btn-selected-border: #2563eb;
+    --focus-btn-selected-color:  #1e40af;
+
     --stat-in-flow-bg:       #f8fafc;
     --stat-in-flow-border:   transparent;
     --stat-number-color:     #2563eb;
@@ -298,6 +309,17 @@
     --day-selector-border:   #2a3f5a;
     --day-selector-hover-border: #c8a951;
     --day-selector-hover-color:  #c8a951;
+
+    /* --- Focus / Rating Buttons --- */
+    --focus-btn-bg:              #1e2f45;
+    --focus-btn-border:          #2a3f5a;
+    --focus-btn-color:           #e8eaf0;
+    --focus-btn-hover-bg:        #243a56;
+    --focus-btn-hover-border:    #c8a951;
+    --focus-btn-selected-bg:     rgba(200, 169, 81, 0.15);
+    --focus-btn-selected-border: #c8a951;
+    --focus-btn-selected-color:  #c8a951;
+
     --stat-in-flow-bg:       #1e2f45;
     --stat-in-flow-border:   #2a3f5a;
     --stat-number-color:     #c8a951;

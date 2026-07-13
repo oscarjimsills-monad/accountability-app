@@ -165,6 +165,87 @@
     color: var(--prompt-text);
 }
 
+/* ─── Focus / Rating Buttons ─────────────────────────────────────────────── */
+.focus-options {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin: 1rem 0;
+}
+
+.focus-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 0.85rem;
+    background: var(--focus-btn-bg);
+    border: 1.5px solid var(--focus-btn-border);
+    border-radius: var(--radius);
+    color: var(--focus-btn-color);
+    font-size: 0.9rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+    white-space: nowrap;
+}
+
+.focus-btn:hover {
+    background: var(--focus-btn-hover-bg);
+    border-color: var(--focus-btn-hover-border);
+}
+
+.focus-btn.selected,
+.focus-btn[data-selected="true"] {
+    background: var(--focus-btn-selected-bg);
+    border-color: var(--focus-btn-selected-border);
+    color: var(--focus-btn-selected-color);
+}
+
+.focus-label {
+    font-weight: 500;
+}
+
+.time-range {
+    font-size: 1rem;
+    color: var(--prompt-subtitle);
+    margin-bottom: 0.5rem;
+}
+
+/* Priority rating buttons (1 / 2 / 3) */
+.rating-buttons {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.rating-btn {
+    width: 2.2rem;
+    height: 2.2rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--focus-btn-bg);
+    border: 1.5px solid var(--focus-btn-border);
+    border-radius: var(--radius);
+    color: var(--focus-btn-color);
+    font-size: 0.95rem;
+    font-weight: 600;
+    font-family: inherit;
+    cursor: pointer;
+    transition: var(--transition);
+}
+
+.rating-btn:hover {
+    background: var(--focus-btn-hover-bg);
+    border-color: var(--focus-btn-hover-border);
+}
+
+.rating-btn.selected {
+    background: var(--focus-btn-selected-bg);
+    border-color: var(--focus-btn-selected-border);
+    color: var(--focus-btn-selected-color);
+    font-weight: 700;
+}
+
 /* ─── Excuse Section ──────────────────────────────────────────────────────── */
 #excuse-section {
     margin-top: 1rem;

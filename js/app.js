@@ -238,7 +238,7 @@ const App = {
         const mainApp = document.getElementById('main-app');
         if (promptContainer) promptContainer.style.display = 'block';
         if (mainApp) mainApp.style.display = 'none';
-        PromptFlow.startCheckIn();
+        PromptFlow.startEveningFlow();
     },
 
     /**

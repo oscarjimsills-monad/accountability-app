@@ -1,6 +1,10 @@
 /**
  * Habit Tracking Module
  * Handles habit creation, tracking, and streak calculations
+ *
+ * Core principle: a habit only exists from its createdAt date onwards,
+ * and is only "active" when not within a pause period. Days before creation
+ * or within pause periods are skipped entirely — not counted as failures.
  */
 
 const HabitManager = {
@@ -36,17 +40,19 @@ const HabitManager = {
             id: Utils.generateId(),
             name: habitData.name,
             description: habitData.description || '',
-            frequency: habitData.frequency || 'daily', // daily, weekly, custom
+            frequency: habitData.frequency || 'daily', // daily, weekly
             category: habitData.category || 'personal',
             targetDays: habitData.targetDays || [], // For weekly: [0,1,2,3,4,5,6]
             completions: [], // Array of date strings
+            pausePeriods: [], // Array of { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' | null }
+            createdDate: Utils.getLogDateString(), // local-time date string — use this for comparisons
             createdAt: new Date().toISOString(),
             archived: false
         };
 
         this.habits.push(habit);
         this.saveHabits();
-        
+
         Utils.showSuccess('Habit created!');
         return habit;
     },
@@ -70,7 +76,7 @@ const HabitManager = {
 
         Object.assign(habit, updates);
         this.saveHabits();
-        
+
         Utils.showSuccess('Habit updated!');
         return habit;
     },
@@ -87,7 +93,7 @@ const HabitManager = {
 
         this.habits.splice(index, 1);
         this.saveHabits();
-        
+
         Utils.showSuccess('Habit deleted!');
         return true;
     },
@@ -101,10 +107,94 @@ const HabitManager = {
 
         habit.archived = !habit.archived;
         this.saveHabits();
-        
+
         Utils.showSuccess(habit.archived ? 'Habit archived!' : 'Habit restored!');
         return habit;
     },
+
+    // ─── Pause / Resume ──────────────────────────────────────────────────────
+
+    /**
+     * Check if a habit is currently paused
+     */
+    isPaused(habit) {
+        if (!habit.pausePeriods || habit.pausePeriods.length === 0) return false;
+        return habit.pausePeriods[habit.pausePeriods.length - 1].to === null;
+    },
+
+    /**
+     * Pause a habit. The pause period starts TOMORROW so today still counts.
+     */
+    pauseHabit(id) {
+        const habit = this.getHabit(id);
+        if (!habit) return null;
+        if (this.isPaused(habit)) return habit; // already paused
+
+        if (!habit.pausePeriods) habit.pausePeriods = [];
+
+        const tomorrow = new Date(Utils.getLogDateString() + 'T12:00:00');
+        tomorrow.setDate(tomorrow.getDate() + 1);
+        const tomorrowStr = Utils.getDateString(tomorrow);
+
+        habit.pausePeriods.push({ from: tomorrowStr, to: null });
+        this.saveHabits();
+
+        Utils.showSuccess('Habit paused');
+        return habit;
+    },
+
+    /**
+     * Resume a paused habit. The pause period ends YESTERDAY so today counts again.
+     */
+    resumeHabit(id) {
+        const habit = this.getHabit(id);
+        if (!habit || !this.isPaused(habit)) return null;
+
+        const yesterday = new Date(Utils.getLogDateString() + 'T12:00:00');
+        yesterday.setDate(yesterday.getDate() - 1);
+        const yesterdayStr = Utils.getDateString(yesterday);
+
+        const lastPeriod = habit.pausePeriods[habit.pausePeriods.length - 1];
+        lastPeriod.to = yesterdayStr;
+        this.saveHabits();
+
+        Utils.showSuccess('Habit resumed');
+        return habit;
+    },
+
+    /**
+     * Check whether a date falls before the habit was created.
+     * Pre-creation days are skipped in streaks (neutral — habit didn't exist).
+     * Uses createdDate (local-time string) if available, falls back to deriving
+     * from createdAt for habits created before this field was added.
+     */
+    isBeforeCreation(habit, dateStr) {
+        const createdDateStr = habit.createdDate || Utils.getLogDateString();
+        return dateStr < createdDateStr;
+    },
+
+    /**
+     * Check whether a date falls within a pause period.
+     * Pause periods BREAK streaks — the habit existed but was stopped.
+     */
+    isInPausePeriod(habit, dateStr) {
+        for (const period of (habit.pausePeriods || [])) {
+            const to = period.to || '9999-12-31';
+            if (dateStr >= period.from && dateStr <= to) return true;
+        }
+        return false;
+    },
+
+    /**
+     * Check whether a specific date is an "active" day for this habit.
+     * Returns false if the date is before creation OR within a pause period.
+     * Only active days count toward success rates.
+     */
+    isDateActive(habit, dateStr) {
+        return !this.isBeforeCreation(habit, dateStr) && !this.isInPausePeriod(habit, dateStr);
+    },
+
+    // ─── Completions ─────────────────────────────────────────────────────────
 
     /**
      * Mark habit as complete for a date
@@ -162,64 +252,106 @@ const HabitManager = {
         return habit.completions.includes(date);
     },
 
+    // ─── Statistics ──────────────────────────────────────────────────────────
+
     /**
-     * Calculate current streak
+     * Calculate current and longest streak.
+     *
+     * Inactive days (pre-creation, pause periods) are skipped transparently —
+     * they do not break a streak and are not counted as misses.
      */
     calculateStreak(id) {
         const habit = this.getHabit(id);
-        if (!habit || habit.completions.length === 0) {
-            return { current: 0, longest: 0 };
-        }
+        if (!habit) return { current: 0, longest: 0 };
 
-        const sortedDates = [...habit.completions].sort().reverse();
-        let currentStreak = 0;
-        let longestStreak = 0;
-        let tempStreak = 0;
-        
-        // Use log date to respect 5am boundary
         const today = Utils.getLogDateString();
-        const todayCompleted = habit.completions.includes(today);
-        
-        // Start from today if completed, otherwise start from yesterday
-        let expectedDate = new Date(today);
-        if (!todayCompleted) {
-            expectedDate.setDate(expectedDate.getDate() - 1);
+        const createdDateStr = habit.createdDate || Utils.getLogDateString();
+        const completionSet = new Set(habit.completions);
+
+        // ── Current streak ──────────────────────────────────────────────────
+        // Walk backwards from today.
+        // - Pre-creation days: skip (neutral)
+        // - Pause period days: BREAK streak
+        // - Active day not completed: BREAK streak
+        let currentStreak = 0;
+        let d = new Date(today + 'T12:00:00');
+
+        // If today is active and not yet completed, start counting from yesterday
+        if (this.isDateActive(habit, today) && !completionSet.has(today)) {
+            d.setDate(d.getDate() - 1);
         }
 
-        // Check current streak (from expected date backwards)
-        for (const dateStr of sortedDates) {
-            const expectedDateStr = Utils.getDateString(expectedDate);
+        while (Utils.getDateString(d) >= createdDateStr) {
+            const dateStr = Utils.getDateString(d);
 
-            if (dateStr === expectedDateStr) {
+            if (this.isBeforeCreation(habit, dateStr)) {
+                // Shouldn't happen given the while condition, but be safe
+                break;
+            }
+
+            if (this.isInPausePeriod(habit, dateStr)) {
+                // Pausing breaks the streak — stop here
+                break;
+            }
+
+            if (completionSet.has(dateStr)) {
                 currentStreak++;
-                tempStreak++;
-                expectedDate.setDate(expectedDate.getDate() - 1);
+                d.setDate(d.getDate() - 1);
             } else {
+                // Active day that was missed — streak is over
                 break;
             }
         }
 
-        // Calculate longest streak
-        tempStreak = 1;
-        for (let i = 0; i < sortedDates.length - 1; i++) {
-            const current = new Date(sortedDates[i]);
-            const next = new Date(sortedDates[i + 1]);
-            const daysDiff = Utils.daysBetween(next, current);
+        // ── Longest streak ──────────────────────────────────────────────────
+        // Walk forward from first completion to last.
+        // - Pre-creation: skip (neutral)
+        // - Pause period: reset streak (break)
+        // - Active missed day: reset streak
+        let longestStreak = currentStreak;
 
-            if (daysDiff === 1) {
-                tempStreak++;
-                longestStreak = Math.max(longestStreak, tempStreak);
-            } else {
-                tempStreak = 1;
+        if (habit.completions.length > 0) {
+            const sortedCompletions = [...habit.completions].sort();
+            const firstDate = sortedCompletions[0];
+            const lastDate = sortedCompletions[sortedCompletions.length - 1];
+
+            let tempStreak = 0;
+            let fd = new Date(firstDate + 'T12:00:00');
+            const ldDate = new Date(lastDate + 'T12:00:00');
+
+            while (fd <= ldDate) {
+                const dateStr = Utils.getDateString(fd);
+
+                if (this.isBeforeCreation(habit, dateStr)) {
+                    // Skip pre-creation (shouldn't occur here, but be safe)
+                    fd.setDate(fd.getDate() + 1);
+                    continue;
+                }
+
+                if (this.isInPausePeriod(habit, dateStr)) {
+                    // Pause breaks the streak
+                    tempStreak = 0;
+                    fd.setDate(fd.getDate() + 1);
+                    continue;
+                }
+
+                if (completionSet.has(dateStr)) {
+                    tempStreak++;
+                    longestStreak = Math.max(longestStreak, tempStreak);
+                } else {
+                    tempStreak = 0;
+                }
+
+                fd.setDate(fd.getDate() + 1);
             }
         }
-        longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
 
         return { current: currentStreak, longest: longestStreak };
     },
 
     /**
-     * Calculate success rate
+     * Calculate success rate over the past N days.
+     * Only active days (post-creation, not paused) count toward the total.
      */
     calculateSuccessRate(id, days = 30) {
         const habit = this.getHabit(id);
@@ -234,21 +366,19 @@ const HabitManager = {
 
         for (let d = new Date(startDate); d <= endDate; d.setDate(d.getDate() + 1)) {
             const dateStr = Utils.getDateString(d);
-            
-            // Only count days after habit was created
-            if (dateStr >= Utils.getDateString(habit.createdAt)) {
+            if (this.isDateActive(habit, dateStr)) {
                 totalDays++;
-                if (habit.completions.includes(dateStr)) {
-                    completedDays++;
-                }
+                if (habit.completions.includes(dateStr)) completedDays++;
             }
         }
 
         return totalDays > 0 ? Utils.calculatePercentage(completedDays, totalDays) : 0;
     },
 
+    // ─── Filters ─────────────────────────────────────────────────────────────
+
     /**
-     * Get active habits
+     * Get non-archived habits (includes paused ones — they show in a paused section)
      */
     getActiveHabits() {
         return this.habits.filter(habit => !habit.archived);
@@ -262,17 +392,26 @@ const HabitManager = {
     },
 
     /**
-     * Get today's habits
+     * Get habits that should appear in today's daily view.
+     * Excludes archived and currently paused habits.
      */
     getTodayHabits() {
-        const today = new Date().getDay(); // 0 = Sunday, 6 = Saturday
-        
+        const today = new Date().getDay(); // 0 = Sunday
+        const todayStr = Utils.getLogDateString();
+
         return this.getActiveHabits().filter(habit => {
+            // Skip paused habits
+            if (this.isPaused(habit)) return false;
+            // Skip if today is somehow inactive (shouldn't happen for non-paused, but be safe)
+            if (!this.isDateActive(habit, todayStr)) return false;
+
             if (habit.frequency === 'daily') return true;
             if (habit.frequency === 'weekly' && habit.targetDays.includes(today)) return true;
             return false;
         });
     },
+
+    // ─── Stats summary ───────────────────────────────────────────────────────
 
     /**
      * Get habit statistics
@@ -318,23 +457,28 @@ const HabitManager = {
             const dateStr = Utils.getDateString(d);
             calendar.push({
                 date: dateStr,
-                completed: habit.completions.includes(dateStr)
+                completed: habit.completions.includes(dateStr),
+                active: this.isDateActive(habit, dateStr)
             });
         }
 
         return calendar;
     },
 
+    // ─── Rendering ───────────────────────────────────────────────────────────
+
     /**
-     * Render habit list
+     * Render habit list — active habits first, then a collapsed paused section
      */
     renderHabitList(containerId) {
         const container = document.getElementById(containerId);
         if (!container) return;
 
-        const habits = this.getActiveHabits();
+        const allHabits = this.getActiveHabits();
+        const activeHabits = allHabits.filter(h => !this.isPaused(h));
+        const pausedHabits = allHabits.filter(h => this.isPaused(h));
 
-        if (habits.length === 0) {
+        if (allHabits.length === 0) {
             container.innerHTML = `
                 <div class="empty-state">
                     <p>No habits yet</p>
@@ -346,34 +490,58 @@ const HabitManager = {
             return;
         }
 
-        container.innerHTML = habits.map(habit => this.renderHabitCard(habit)).join('');
+        let html = activeHabits.map(habit => this.renderHabitCard(habit)).join('');
+
+        if (pausedHabits.length > 0) {
+            html += `
+                <div class="paused-habits-section">
+                    <h3 class="paused-habits-heading">⏸ Paused (${pausedHabits.length})</h3>
+                    ${pausedHabits.map(habit => this.renderHabitCard(habit)).join('')}
+                </div>
+            `;
+        }
+
+        container.innerHTML = html;
     },
 
     /**
-     * Render habit card
+     * Render a single habit card
      */
     renderHabitCard(habit) {
         const today = Utils.getLogDateString();
-        const completed = habit.completions.includes(today);
+        const paused = this.isPaused(habit);
+        const completed = !paused && habit.completions.includes(today);
         const streak = this.calculateStreak(habit.id);
         const successRate = this.calculateSuccessRate(habit.id, 30);
 
+        const pausedBadge = paused
+            ? `<span class="habit-paused-badge">Paused</span>`
+            : '';
+
+        const checkBtn = paused ? '' : `
+            <button class="habit-check ${completed ? 'checked' : ''}"
+                    onclick="HabitManager.toggleHabit('${habit.id}'); HabitManager.refreshCurrentView();"
+                    title="${completed ? 'Mark incomplete' : 'Mark complete'}">
+                ${completed ? '✓' : ''}
+            </button>
+        `;
+
+        const pauseResumeBtn = paused
+            ? `<button class="btn-icon" onclick="HabitManager.resumeHabit('${habit.id}'); HabitManager.refreshCurrentView();" title="Resume">▶️</button>`
+            : `<button class="btn-icon" onclick="HabitManager.pauseHabit('${habit.id}'); HabitManager.refreshCurrentView();" title="Pause">⏸️</button>`;
+
         return `
-            <div class="habit-card ${completed ? 'completed' : ''}" data-habit-id="${habit.id}">
+            <div class="habit-card ${completed ? 'completed' : ''} ${paused ? 'paused' : ''}" data-habit-id="${habit.id}">
                 <div class="habit-header">
                     <div class="habit-info">
-                        <h3 class="habit-name">${Utils.escapeHtml(habit.name)}</h3>
+                        <h3 class="habit-name">${Utils.escapeHtml(habit.name)} ${pausedBadge}</h3>
                         <span class="habit-category">${habit.category}</span>
                     </div>
-                    <button class="habit-check ${completed ? 'checked' : ''}" 
-                            onclick="HabitManager.toggleHabit('${habit.id}'); HabitManager.refreshCurrentView();"
-                            title="${completed ? 'Mark incomplete' : 'Mark complete'}">
-                        ${completed ? '✓' : ''}
-                    </button>
+                    ${checkBtn}
                 </div>
-                
+
                 ${habit.description ? `<p class="habit-description">${Utils.escapeHtml(habit.description)}</p>` : ''}
-                
+
                 <div class="habit-stats">
                     <div class="habit-stat">
                         <span class="stat-icon">🔥</span>
@@ -391,21 +559,18 @@ const HabitManager = {
                         <span class="stat-label">Best</span>
                     </div>
                 </div>
-                
+
                 <div class="habit-actions">
-                    <button class="btn-icon" onclick="HabitManager.showHabitDetails('${habit.id}')" title="Details">
-                        📊
-                    </button>
-                    <button class="btn-icon" onclick="HabitManager.showEditHabitModal('${habit.id}')" title="Edit">
-                        ✏️
-                    </button>
-                    <button class="btn-icon" onclick="HabitManager.confirmDeleteHabit('${habit.id}')" title="Delete">
-                        🗑️
-                    </button>
+                    <button class="btn-icon" onclick="HabitManager.showHabitDetails('${habit.id}')" title="Details">📊</button>
+                    <button class="btn-icon" onclick="HabitManager.showEditHabitModal('${habit.id}')" title="Edit">✏️</button>
+                    ${pauseResumeBtn}
+                    <button class="btn-icon" onclick="HabitManager.confirmDeleteHabit('${habit.id}')" title="Delete">🗑️</button>
                 </div>
             </div>
         `;
     },
+
+    // ─── Modals ──────────────────────────────────────────────────────────────
 
     /**
      * Show create habit modal
@@ -425,12 +590,12 @@ const HabitManager = {
                                 <label for="habit-name">Habit Name *</label>
                                 <input type="text" id="habit-name" class="input-text" required>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="habit-description">Description</label>
                                 <textarea id="habit-description" class="input-textarea" rows="2"></textarea>
                             </div>
-                            
+
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="habit-frequency">Frequency</label>
@@ -439,7 +604,7 @@ const HabitManager = {
                                         <option value="weekly">Specific Days</option>
                                     </select>
                                 </div>
-                                
+
                                 <div class="form-group">
                                     <label for="habit-category">Category</label>
                                     <select id="habit-category" class="input-select">
@@ -452,7 +617,7 @@ const HabitManager = {
                                     </select>
                                 </div>
                             </div>
-                            
+
                             <div id="weekly-days" class="form-group" style="display: none;">
                                 <label>Target Days</label>
                                 <div class="day-selector">
@@ -465,7 +630,7 @@ const HabitManager = {
                                     <label><input type="checkbox" value="6"> Sat</label>
                                 </div>
                             </div>
-                            
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="HabitManager.closeModal()">
                                     Cancel
@@ -479,13 +644,12 @@ const HabitManager = {
                 </div>
             </div>
         `;
-        
-        // Setup frequency change listener
+
         document.getElementById('habit-frequency').addEventListener('change', (e) => {
-            document.getElementById('weekly-days').style.display = 
+            document.getElementById('weekly-days').style.display =
                 e.target.value === 'weekly' ? 'block' : 'none';
         });
-        
+
         modal.style.display = 'flex';
     },
 
@@ -510,12 +674,12 @@ const HabitManager = {
                                 <label for="habit-name">Habit Name *</label>
                                 <input type="text" id="habit-name" class="input-text" value="${Utils.escapeHtml(habit.name)}" required>
                             </div>
-                            
+
                             <div class="form-group">
                                 <label for="habit-description">Description</label>
                                 <textarea id="habit-description" class="input-textarea" rows="2">${Utils.escapeHtml(habit.description)}</textarea>
                             </div>
-                            
+
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="habit-frequency">Frequency</label>
@@ -524,7 +688,7 @@ const HabitManager = {
                                         <option value="weekly" ${habit.frequency === 'weekly' ? 'selected' : ''}>Specific Days</option>
                                     </select>
                                 </div>
-                                
+
                                 <div class="form-group">
                                     <label for="habit-category">Category</label>
                                     <select id="habit-category" class="input-select">
@@ -537,7 +701,7 @@ const HabitManager = {
                                     </select>
                                 </div>
                             </div>
-                            
+
                             <div id="weekly-days" class="form-group" style="display: ${habit.frequency === 'weekly' ? 'block' : 'none'};">
                                 <label>Target Days</label>
                                 <div class="day-selector">
@@ -550,7 +714,7 @@ const HabitManager = {
                                     <label><input type="checkbox" value="6" ${habit.targetDays?.includes(6) ? 'checked' : ''}> Sat</label>
                                 </div>
                             </div>
-                            
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="HabitManager.closeModal()">
                                     Cancel
@@ -564,13 +728,12 @@ const HabitManager = {
                 </div>
             </div>
         `;
-        
-        // Setup frequency change listener
+
         document.getElementById('habit-frequency').addEventListener('change', (e) => {
-            document.getElementById('weekly-days').style.display = 
+            document.getElementById('weekly-days').style.display =
                 e.target.value === 'weekly' ? 'block' : 'none';
         });
-        
+
         modal.style.display = 'flex';
     },
 
@@ -582,11 +745,11 @@ const HabitManager = {
 
         const frequency = document.getElementById('habit-frequency').value;
         let targetDays = [];
-        
+
         if (frequency === 'weekly') {
             const checkboxes = document.querySelectorAll('#weekly-days input[type="checkbox"]:checked');
             targetDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
-            
+
             if (targetDays.length === 0) {
                 Utils.showError('Please select at least one day');
                 return;
@@ -614,11 +777,11 @@ const HabitManager = {
 
         const frequency = document.getElementById('habit-frequency').value;
         let targetDays = [];
-        
+
         if (frequency === 'weekly') {
             const checkboxes = document.querySelectorAll('#weekly-days input[type="checkbox"]:checked');
             targetDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
-            
+
             if (targetDays.length === 0) {
                 Utils.showError('Please select at least one day');
                 return;
@@ -647,9 +810,16 @@ const HabitManager = {
 
         const streak = this.calculateStreak(habitId);
         const successRate = this.calculateSuccessRate(habitId, 30);
-        
-        // Simple details view - could be enhanced with calendar
-        alert(`${habit.name}\n\nCurrent Streak: ${streak.current} days\nLongest Streak: ${streak.longest} days\n30-day Success: ${successRate}%\nTotal Completions: ${habit.completions.length}`);
+        const paused = this.isPaused(habit);
+
+        alert(
+            `${habit.name}${paused ? ' (Paused)' : ''}\n\n` +
+            `Current Streak: ${streak.current} days\n` +
+            `Longest Streak: ${streak.longest} days\n` +
+            `30-day Success: ${successRate}%\n` +
+            `Total Completions: ${habit.completions.length}\n` +
+            `Pause periods: ${(habit.pausePeriods || []).length}`
+        );
     },
 
     /**

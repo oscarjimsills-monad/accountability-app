@@ -98,6 +98,14 @@ body {
     color: var(--primary-color);
 }
 
+.app-version {
+    font-size: 0.7rem;
+    font-weight: 400;
+    color: var(--text-secondary);
+    vertical-align: middle;
+    margin-left: 0.3rem;
+}
+
 .header-info {
     display: flex;
     align-items: center;

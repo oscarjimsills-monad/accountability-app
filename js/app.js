@@ -1098,6 +1098,31 @@ const App = {
     /**
      * Show detailed view for a specific day
      */
+    /**
+     * Render a collapsible accordion section for the day detail view.
+     * open=true means expanded by default.
+     */
+    accordionSection(id, title, content, open = false) {
+        return `
+            <div class="accordion-section ${open ? 'open' : ''}" id="acc-${id}">
+                <button class="accordion-header" onclick="App.toggleAccordion('acc-${id}')">
+                    <span class="accordion-title">${title}</span>
+                    <span class="accordion-chevron">›</span>
+                </button>
+                <div class="accordion-body">
+                    <div class="accordion-inner">
+                        ${content}
+                    </div>
+                </div>
+            </div>
+        `;
+    },
+
+    toggleAccordion(id) {
+        const el = document.getElementById(id);
+        if (el) el.classList.toggle('open');
+    },
+
     showDayDetail(date) {
         const container = document.getElementById('main-content');
         const commitment = StorageManager.getCommitments(date);
@@ -1106,220 +1131,169 @@ const App = {
             const entryDate = Utils.getDateString(new Date(entry.startTime));
             return entryDate === date;
         });
-        
+
         const dateObj = new Date(date);
         const formattedDate = Utils.formatDate(dateObj, 'long');
-        
-        container.innerHTML = `
-            <div class="view-header">
-                <button class="btn btn-secondary" onclick="App.showView('history')">
-                    ← Back to History
-                </button>
-                <h1>📅 ${formattedDate}</h1>
-                <button class="btn btn-secondary" onclick="App.showEditDayModal('${date}')">
-                    ✏️ Edit
-                </button>
-            </div>
-            
-            <div class="day-detail">
-                <!-- Screentime -->
-                <div class="detail-section">
-                    <h2>📱 Screentime</h2>
-                    ${screentimeEntry ? `
-                        <div class="detail-card ${screentimeEntry.totalMinutes <= 90 ? 'success' : 'warning'}">
-                            <div class="detail-row">
-                                <span class="detail-label">Total:</span>
-                                <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
-                            </div>
-                            ${screentimeEntry.notes ? `
-                                <div class="detail-row">
-                                    <span class="detail-label">Apps:</span>
-                                    <div class="apps-breakdown">
-                                        ${App.parseAppsString(screentimeEntry.notes).map(app => `
-                                            <div class="app-item">
-                                                <span class="app-name">${Utils.escapeHtml(app.name)}</span>
-                                                <span class="app-time">${app.time}</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            ` : '<div class="detail-row"><span class="detail-label muted">No app breakdown logged</span></div>'}
-                            <div class="detail-actions">
-                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
-                                    ✏️ Edit Apps
-                                </button>
-                            </div>
-                        </div>
-                    ` : `
-                        <div class="detail-card">
-                            <div class="detail-row">
-                                <span class="detail-label muted">No screentime logged</span>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
-                                    + Add Screentime
-                                </button>
-                            </div>
-                        </div>
-                    `}
-                </div>
 
-                <!-- Wake-up Commitment -->
-                ${commitment?.wakeup?.commitment ? `
-                    <div class="detail-section">
-                        <h2>⏰ Wake-up Time</h2>
-                        <div class="detail-card ${commitment.wakeup.met ? 'success' : 'warning'}">
-                            <div class="detail-row">
-                                <span class="detail-label">Committed:</span>
-                                <span class="detail-value">${Utils.formatTimeString(commitment.wakeup.commitment)}</span>
-                            </div>
-                            <div class="detail-row">
-                                <span class="detail-label">Actual:</span>
-                                <span class="detail-value">${commitment.wakeup.actual ? Utils.formatTimeString(commitment.wakeup.actual) : 'Not logged'}</span>
-                            </div>
-                            ${commitment.wakeup.minutesLate > 0 ? `
-                                <div class="detail-row">
-                                    <span class="detail-label">Late by:</span>
-                                    <span class="detail-value warning-text">${commitment.wakeup.minutesLate} minutes</span>
-                                </div>
-                            ` : ''}
-                            ${commitment.wakeup.excuse ? `
-                                <div class="detail-row">
-                                    <span class="detail-label">Excuse:</span>
-                                    <span class="detail-value">${Utils.escapeHtml(commitment.wakeup.excuse)}</span>
-                                </div>
-                            ` : ''}
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <!-- Obligations -->
-                ${commitment?.obligations && commitment.obligations.length > 0 ? `
-                    <div class="detail-section">
-                        <h2>📋 Obligations</h2>
-                        <div class="obligations-summary">
-                            ${commitment.obligations.map(o => `
-                                <div class="obligation-item ${o.completed ? 'completed' : 'incomplete'}">
-                                    <span class="obligation-status">${o.completed ? '✓' : '✗'}</span>
-                                    <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
-                                    ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
-                                </div>
-                            `).join('')}
-                        </div>
-                        <div class="completion-summary">
-                            ${commitment.obligations.filter(o => o.completed).length}/${commitment.obligations.length} completed
-                        </div>
-                    </div>
-                ` : ''}
-                
-                <!-- Priorities -->
-                ${commitment?.priorities && commitment.priorities.length > 0 ? `
-                    <div class="detail-section">
-                        <h2>🎯 Priorities</h2>
-                        <div class="priorities-summary">
-                            ${commitment.priorities.map(p => `
-                                <div class="priority-item">
-                                    <div class="priority-header">
-                                        <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
-                                        <span class="priority-level ${p.priority}">${p.priority}</span>
-                                    </div>
-                                    ${p.rating ? `
-                                        <div class="priority-rating">
-                                            Rating: ${'⭐'.repeat(p.rating)} (${p.rating}/3)
-                                        </div>
-                                    ` : '<div class="priority-rating">Not rated</div>'}
+        // ── Screentime content ──────────────────────────────────────────────
+        const screentimeContent = screentimeEntry ? `
+            <div class="detail-card ${screentimeEntry.totalMinutes <= 90 ? 'success' : 'warning'}">
+                <div class="detail-row">
+                    <span class="detail-label">Total:</span>
+                    <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
+                </div>
+                ${screentimeEntry.notes ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Apps:</span>
+                        <div class="apps-breakdown">
+                            ${App.parseAppsString(screentimeEntry.notes).map(app => `
+                                <div class="app-item">
+                                    <span class="app-name">${Utils.escapeHtml(app.name)}</span>
+                                    <span class="app-time">${app.time}</span>
                                 </div>
                             `).join('')}
                         </div>
                     </div>
+                ` : '<div class="detail-row"><span class="detail-label muted">No app breakdown logged</span></div>'}
+                <div class="detail-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">✏️ Edit Apps</button>
+                </div>
+            </div>
+        ` : `
+            <div class="detail-card">
+                <div class="detail-row"><span class="detail-label muted">No screentime logged</span></div>
+                <div class="detail-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">+ Add Screentime</button>
+                </div>
+            </div>
+        `;
+
+        // ── Wake-up content ─────────────────────────────────────────────────
+        const wakeupContent = commitment?.wakeup?.commitment ? `
+            <div class="detail-card ${commitment.wakeup.met ? 'success' : 'warning'}">
+                <div class="detail-row">
+                    <span class="detail-label">Committed:</span>
+                    <span class="detail-value">${Utils.formatTimeString(commitment.wakeup.commitment)}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="detail-label">Actual:</span>
+                    <span class="detail-value">${commitment.wakeup.actual ? Utils.formatTimeString(commitment.wakeup.actual) : 'Not logged'}</span>
+                </div>
+                ${commitment.wakeup.minutesLate > 0 ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Late by:</span>
+                        <span class="detail-value warning-text">${commitment.wakeup.minutesLate} minutes</span>
+                    </div>
                 ` : ''}
-                
-                <!-- Habits -->
-                ${(() => {
-                    const allHabits = HabitManager.getActiveHabits().filter(h => {
-                        const created = Utils.getDateString(new Date(h.createdAt));
-                        return created <= date;
-                    });
-                    if (allHabits.length === 0) return '';
-                    
+                ${commitment.wakeup.excuse ? `
+                    <div class="detail-row">
+                        <span class="detail-label">Excuse:</span>
+                        <span class="detail-value">${Utils.escapeHtml(commitment.wakeup.excuse)}</span>
+                    </div>
+                ` : ''}
+            </div>
+        ` : null;
+
+        // ── Obligations content ─────────────────────────────────────────────
+        const obligationsContent = commitment?.obligations?.length > 0 ? `
+            <div class="obligations-summary">
+                ${commitment.obligations.map(o => `
+                    <div class="obligation-item ${o.completed ? 'completed' : 'incomplete'}">
+                        <span class="obligation-status">${o.completed ? '✓' : '✗'}</span>
+                        <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
+                        ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
+                    </div>
+                `).join('')}
+            </div>
+            <div class="completion-summary">
+                ${commitment.obligations.filter(o => o.completed).length}/${commitment.obligations.length} completed
+            </div>
+        ` : null;
+
+        // ── Priorities content ──────────────────────────────────────────────
+        const prioritiesContent = commitment?.priorities?.length > 0 ? `
+            <div class="priorities-summary">
+                ${commitment.priorities.map(p => `
+                    <div class="priority-item">
+                        <div class="priority-header">
+                            <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
+                            <span class="priority-level ${p.priority}">${p.priority}</span>
+                        </div>
+                        ${p.rating
+                            ? `<div class="priority-rating">Rating: ${'⭐'.repeat(p.rating)} (${p.rating}/3)</div>`
+                            : '<div class="priority-rating">Not rated</div>'}
+                    </div>
+                `).join('')}
+            </div>
+        ` : null;
+
+        // ── Habits content ──────────────────────────────────────────────────
+        const allHabits = HabitManager.getActiveHabits().filter(h => {
+            const created = h.createdDate || Utils.getDateString(new Date(h.createdAt));
+            return created <= date;
+        });
+        const habitsContent = allHabits.length > 0 ? `
+            <div class="habits-list">
+                ${allHabits.map(habit => {
+                    const completed = HabitManager.isCompleted(habit.id, date);
+                    const streak = HabitManager.calculateStreak(habit.id);
                     return `
-                        <div class="detail-section">
-                            <h2>✅ Habits</h2>
-                            <div class="habits-list">
-                                ${allHabits.map(habit => {
-                                    const completed = HabitManager.isCompleted(habit.id, date);
-                                    const streak = HabitManager.calculateStreak(habit.id);
-                                    return `
-                                        <div class="habit-detail-item ${completed ? 'completed' : 'incomplete'}">
-                                            <button class="habit-toggle-btn"
-                                                    onclick="App.toggleHistoricalHabit('${habit.id}', '${date}')"
-                                                    title="${completed ? 'Mark incomplete' : 'Mark complete'}">
-                                                ${completed ? '✓' : '○'}
-                                            </button>
-                                            <div class="habit-detail-info">
-                                                <div class="habit-detail-name">${Utils.escapeHtml(habit.name)}</div>
-                                                <div class="habit-detail-meta">
-                                                    <span class="habit-category-badge">${habit.category}</span>
-                                                    <span class="habit-streak">🔥 ${streak.current} day streak</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    `;
-                                }).join('')}
+                        <div class="habit-detail-item ${completed ? 'completed' : 'incomplete'}">
+                            <button class="habit-toggle-btn"
+                                    onclick="App.toggleHistoricalHabit('${habit.id}', '${date}')"
+                                    title="${completed ? 'Mark incomplete' : 'Mark complete'}">
+                                ${completed ? '✓' : '○'}
+                            </button>
+                            <div class="habit-detail-info">
+                                <div class="habit-detail-name">${Utils.escapeHtml(habit.name)}</div>
+                                <div class="habit-detail-meta">
+                                    <span class="habit-category-badge">${habit.category}</span>
+                                    <span class="habit-streak">🔥 ${streak.current} day streak</span>
+                                </div>
                             </div>
                         </div>
                     `;
-                })()}
-                
-                <!-- Time Tracking -->
-                ${timeEntries.length > 0 ? `
-                    <div class="detail-section">
-                        <h2>⏱️ Time Tracked</h2>
-                        <div class="time-entries-list">
-                            ${timeEntries.map(entry => `
-                                <div class="time-entry-item">
-                                    <div class="entry-activity">${Utils.escapeHtml(entry.activity)}</div>
-                                    <div class="entry-meta">
-                                        <span class="entry-category">${entry.category}</span>
-                                        <span class="entry-duration">${Math.floor(entry.duration / 60)}h ${entry.duration % 60}m</span>
-                                    </div>
-                                    <div class="entry-actions">
-                                        <button class="btn-icon" onclick="App.showEditTimeEntryModal('${entry.id}', '${date}')" title="Edit">✏️</button>
-                                        <button class="btn-icon" onclick="App.deleteTimeEntry('${entry.id}', '${date}')" title="Delete">🗑️</button>
-                                    </div>
-                                </div>
-                            `).join('')}
+                }).join('')}
+            </div>
+        ` : null;
+
+        // ── Time tracking content ───────────────────────────────────────────
+        const timeContent = timeEntries.length > 0 ? `
+            <div class="time-entries-list">
+                ${timeEntries.map(entry => `
+                    <div class="time-entry-item">
+                        <div class="entry-activity">${Utils.escapeHtml(entry.activity)}</div>
+                        <div class="entry-meta">
+                            <span class="entry-category">${entry.category}</span>
+                            <span class="entry-duration">${Math.floor(entry.duration / 60)}h ${entry.duration % 60}m</span>
+                        </div>
+                        <div class="entry-actions">
+                            <button class="btn-icon" onclick="App.showEditTimeEntryModal('${entry.id}', '${date}')" title="Edit">✏️</button>
+                            <button class="btn-icon" onclick="App.deleteTimeEntry('${entry.id}', '${date}')" title="Delete">🗑️</button>
                         </div>
                     </div>
-                ` : ''}
-                
-                <!-- Reflections -->
-                ${(() => {
-                    const reflections = ReflectionManager.getReflectionsByDate(date);
-                    return reflections.length > 0 ? `
-                        <div class="detail-section">
-                            <h2>💭 Reflections</h2>
-                            ${reflections.map(reflection => `
-                                <div class="detail-card">
-                                    <div class="reflection-content">${Utils.escapeHtml(reflection.content)}</div>
-                                    <div class="reflection-footer">
-                                        <span class="reflection-time">${Utils.formatTime(reflection.createdAt)}</span>
-                                    </div>
-                                </div>
-                            `).join('')}
-                        </div>
-                    ` : '';
-                })()}
+                `).join('')}
+            </div>
+        ` : null;
 
-                ${(() => {
-    const dist = App.getDayTimeDistribution(date);
-    return dist.hasData ? `
-        <div class="detail-section">
-            <h2>⏱️ Time Distribution</h2>
-            <div class="time-distribution-container">
-                <div class="pie-chart-container">
-                    ${Dashboard.renderPieChart(dist.data)}
+        // ── Reflections content ─────────────────────────────────────────────
+        const reflections = ReflectionManager.getReflectionsByDate(date);
+        const reflectionsContent = reflections.length > 0 ? `
+            ${reflections.map(r => `
+                <div class="detail-card">
+                    <div class="reflection-content">${Utils.escapeHtml(r.content)}</div>
+                    <div class="reflection-footer">
+                        <span class="reflection-time">${Utils.formatTime(r.createdAt)}</span>
+                    </div>
                 </div>
+            `).join('')}
+        ` : null;
+
+        // ── Time distribution content ───────────────────────────────────────
+        const dist = App.getDayTimeDistribution(date);
+        const distContent = dist.hasData ? `
+            <div class="time-distribution-container">
+                <div class="pie-chart-container">${Dashboard.renderPieChart(dist.data)}</div>
                 <div class="time-legend">
                     ${dist.data.map(item => `
                         <div class="legend-item">
@@ -1331,14 +1305,27 @@ const App = {
                     `).join('')}
                 </div>
             </div>
-        </div>
-    ` : '';
-})()}
-                ${!commitment && !screentimeEntry && timeEntries.length === 0 && ReflectionManager.getReflectionsByDate(date).length === 0 ? `
-                    <div class="empty-state">
-                        <p>No data logged for this day</p>
-                    </div>
-                ` : ''}
+        ` : null;
+
+        const hasAnyData = commitment || screentimeEntry || timeEntries.length > 0 || reflections.length > 0;
+
+        container.innerHTML = `
+            <div class="view-header">
+                <button class="btn btn-secondary" onclick="App.showView('history')">← Back to History</button>
+                <h1>📅 ${formattedDate}</h1>
+                <button class="btn btn-secondary" onclick="App.showEditDayModal('${date}')">✏️ Edit</button>
+            </div>
+
+            <div class="day-detail accordion-list">
+                ${this.accordionSection('screentime', '📱 Screentime', screentimeContent, true)}
+                ${wakeupContent     ? this.accordionSection('wakeup',      '⏰ Wake-up Time',     wakeupContent)      : ''}
+                ${obligationsContent ? this.accordionSection('obligations', '📋 Obligations',      obligationsContent) : ''}
+                ${prioritiesContent  ? this.accordionSection('priorities',  '🎯 Priorities',       prioritiesContent)  : ''}
+                ${habitsContent      ? this.accordionSection('habits',      '✅ Habits',           habitsContent)      : ''}
+                ${timeContent        ? this.accordionSection('time',        '⏱️ Time Tracked',     timeContent)        : ''}
+                ${reflectionsContent ? this.accordionSection('reflections', '💭 Reflections',      reflectionsContent) : ''}
+                ${distContent        ? this.accordionSection('dist',        '⏱️ Time Distribution',distContent)        : ''}
+                ${!hasAnyData ? '<div class="empty-state"><p>No data logged for this day</p></div>' : ''}
             </div>
         `;
     },

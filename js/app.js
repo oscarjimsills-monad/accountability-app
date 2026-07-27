@@ -1122,6 +1122,48 @@ const App = {
             </div>
             
             <div class="day-detail">
+                <!-- Screentime -->
+                <div class="detail-section">
+                    <h2>📱 Screentime</h2>
+                    ${screentimeEntry ? `
+                        <div class="detail-card ${screentimeEntry.totalMinutes <= 90 ? 'success' : 'warning'}">
+                            <div class="detail-row">
+                                <span class="detail-label">Total:</span>
+                                <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
+                            </div>
+                            ${screentimeEntry.notes ? `
+                                <div class="detail-row">
+                                    <span class="detail-label">Apps:</span>
+                                    <div class="apps-breakdown">
+                                        ${App.parseAppsString(screentimeEntry.notes).map(app => `
+                                            <div class="app-item">
+                                                <span class="app-name">${Utils.escapeHtml(app.name)}</span>
+                                                <span class="app-time">${app.time}</span>
+                                            </div>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            ` : '<div class="detail-row"><span class="detail-label muted">No app breakdown logged</span></div>'}
+                            <div class="detail-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
+                                    ✏️ Edit Apps
+                                </button>
+                            </div>
+                        </div>
+                    ` : `
+                        <div class="detail-card">
+                            <div class="detail-row">
+                                <span class="detail-label muted">No screentime logged</span>
+                            </div>
+                            <div class="detail-actions">
+                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
+                                    + Add Screentime
+                                </button>
+                            </div>
+                        </div>
+                    `}
+                </div>
+
                 <!-- Wake-up Commitment -->
                 ${commitment?.wakeup?.commitment ? `
                     <div class="detail-section">
@@ -1228,48 +1270,6 @@ const App = {
                         </div>
                     `;
                 })()}
-                
-                <!-- Screentime -->
-                <div class="detail-section">
-                    <h2>📱 Screentime</h2>
-                    ${screentimeEntry ? `
-                        <div class="detail-card ${screentimeEntry.totalMinutes <= 90 ? 'success' : 'warning'}">
-                            <div class="detail-row">
-                                <span class="detail-label">Total:</span>
-                                <span class="detail-value">${Math.floor(screentimeEntry.totalMinutes / 60)}h ${screentimeEntry.totalMinutes % 60}m</span>
-                            </div>
-                            ${screentimeEntry.notes ? `
-                                <div class="detail-row">
-                                    <span class="detail-label">Apps:</span>
-                                    <div class="apps-breakdown">
-                                        ${App.parseAppsString(screentimeEntry.notes).map(app => `
-                                            <div class="app-item">
-                                                <span class="app-name">${Utils.escapeHtml(app.name)}</span>
-                                                <span class="app-time">${app.time}</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            ` : '<div class="detail-row"><span class="detail-label muted">No app breakdown logged</span></div>'}
-                            <div class="detail-actions">
-                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
-                                    ✏️ Edit Apps
-                                </button>
-                            </div>
-                        </div>
-                    ` : `
-                        <div class="detail-card">
-                            <div class="detail-row">
-                                <span class="detail-label muted">No screentime logged</span>
-                            </div>
-                            <div class="detail-actions">
-                                <button class="btn btn-secondary btn-sm" onclick="App.showEditScreentimeAppsModal('${date}')">
-                                    + Add Screentime
-                                </button>
-                            </div>
-                        </div>
-                    `}
-                </div>
                 
                 <!-- Time Tracking -->
                 ${timeEntries.length > 0 ? `

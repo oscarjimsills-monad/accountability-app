@@ -23,6 +23,7 @@ const ScreentimeGraph = {
         { label: '3M',  days: 90  },
         { label: '1Y',  days: 365 },
         { label: '5Y',  days: 1825},
+        { label: 'All', days: null },
     ],
 
     COLORS: {
@@ -223,18 +224,28 @@ const ScreentimeGraph = {
      * return array of { date, minutes, hasDatum } objects.
      */
     _buildRange() {
-        const zoomDays = this.ZOOM_OPTIONS.find(z => z.label === this.currentZoom)?.days || 7;
-        const entries  = ScreentimeTracker.entries || [];
+        const zoomOption = this.ZOOM_OPTIONS.find(z => z.label === this.currentZoom);
+        const zoomDays   = zoomOption?.days ?? null;
+        const entries    = ScreentimeTracker.entries || [];
 
         // Find dataset bounds
         const allDates = entries.map(e => e.date).sort();
         const dataStart = allDates[0];
-        const dataEnd   = allDates[allDates.length - 1] || Utils.getLogDateString();
 
-        // Window: last N days up to today
-        const today = new Date();
+        const today  = new Date();
         const startD = new Date(today);
-        startD.setDate(today.getDate() - (zoomDays - 1));
+
+        if (zoomDays === null) {
+            // "All" — start from the first logged entry
+            if (dataStart) {
+                const firstDate = new Date(dataStart + 'T12:00:00');
+                startD.setTime(firstDate.getTime());
+            } else {
+                startD.setDate(today.getDate() - 6); // fallback: 1 week
+            }
+        } else {
+            startD.setDate(today.getDate() - (zoomDays - 1));
+        }
 
         // Build day-indexed map
         const byDate = {};

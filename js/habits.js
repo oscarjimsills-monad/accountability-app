@@ -169,7 +169,8 @@ const HabitManager = {
      * from createdAt for habits created before this field was added.
      */
     isBeforeCreation(habit, dateStr) {
-        const createdDateStr = habit.createdDate || Utils.getLogDateString();
+        // Use createdDate (local-time) if available; fall back to deriving from createdAt (ISO)
+        const createdDateStr = habit.createdDate || Utils.getDateString(new Date(habit.createdAt));
         return dateStr < createdDateStr;
     },
 
@@ -265,7 +266,7 @@ const HabitManager = {
         if (!habit) return { current: 0, longest: 0 };
 
         const today = Utils.getLogDateString();
-        const createdDateStr = habit.createdDate || Utils.getLogDateString();
+        const createdDateStr = habit.createdDate || Utils.getDateString(new Date(habit.createdAt));
         const completionSet = new Set(habit.completions);
 
         // ── Current streak ──────────────────────────────────────────────────
@@ -527,8 +528,8 @@ const HabitManager = {
         `;
 
         const pauseResumeBtn = paused
-            ? `<button class="btn-icon" onclick="HabitManager.resumeHabit('${habit.id}'); HabitManager.refreshCurrentView();" title="Resume">▶️</button>`
-            : `<button class="btn-icon" onclick="HabitManager.pauseHabit('${habit.id}'); HabitManager.refreshCurrentView();" title="Pause">⏸️</button>`;
+            ? `<button class="btn btn-sm btn-secondary habit-pause-btn" onclick="HabitManager.resumeHabit('${habit.id}'); HabitManager.refreshCurrentView();">▶ Resume</button>`
+            : `<button class="btn btn-sm btn-secondary habit-pause-btn" onclick="HabitManager.pauseHabit('${habit.id}'); HabitManager.refreshCurrentView();">⏸ Pause</button>`;
 
         return `
             <div class="habit-card ${completed ? 'completed' : ''} ${paused ? 'paused' : ''}" data-habit-id="${habit.id}">

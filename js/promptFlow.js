@@ -1197,18 +1197,34 @@ const PromptFlow = {
                     `;
                 },
                 setupListeners: (data) => {
-                    // Carry forward any incomplete obligations from today
-                    const lastEveningDate = StorageManager.getLastEveningCheckin();
-                    if (lastEveningDate && (!data.obligations || data.obligations.length === 0)) {
-                        const previousCommitment = StorageManager.getCommitments(lastEveningDate);
-                        const missed = (previousCommitment?.obligations || []).filter(o => !o.completed);
-                        data.obligations = missed.map(o => ({
-                            title: o.title,
-                            completed: false,
-                            carriedOver: true
-                        }));
-                    } else {
-                        data.obligations = data.obligations || [];
+                    // Carry forward incomplete obligations from the previous evening —
+                    // but only once per flow session (flag prevents re-running on back/forward).
+                    if (!data.obligationsInitialized) {
+                        data.obligationsInitialized = true;
+                        const lastEveningDate = StorageManager.getLastEveningCheckin();
+                        if (lastEveningDate) {
+                            const previousCommitment = StorageManager.getCommitments(lastEveningDate);
+                            const missed = (previousCommitment?.obligations || []).filter(o => !o.completed);
+                            if (missed.length > 0) {
+                                const carried = missed.map(o => ({
+                                    title: o.title,
+                                    time: o.time || '',
+                                    completed: false,
+                                    carriedOver: true
+                                }));
+                                // Prepend carried items; keep any the user already added,
+                                // skipping duplicates (match by lowercased title).
+                                const carriedTitles = new Set(carried.map(o => o.title.toLowerCase()));
+                                const userAdded = (data.obligations || []).filter(
+                                    o => !carriedTitles.has(o.title.toLowerCase())
+                                );
+                                data.obligations = [...carried, ...userAdded];
+                            } else {
+                                data.obligations = data.obligations || [];
+                            }
+                        } else {
+                            data.obligations = data.obligations || [];
+                        }
                     }
                     this.renderObligations();
                 }

@@ -285,26 +285,8 @@ const App = {
         // Get obligations from today's commitment
         let obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
         
-        // If no obligations for today, check if there are incomplete obligations from yesterday
-        // that should have been carried over
-        if (obligations.length === 0) {
-            const yesterday = Utils.getYesterdayString();
-            const yesterdayCommitment = StorageManager.getCommitments(yesterday);
-            if (yesterdayCommitment && yesterdayCommitment.obligations) {
-                const incompleteFromYesterday = yesterdayCommitment.obligations.filter(o => !o.completed);
-                if (incompleteFromYesterday.length > 0) {
-                    // Carry them over to today
-                    obligations = incompleteFromYesterday.map(o => ({
-                        title: o.title,
-                        time: o.time,
-                        completed: false,
-                        carriedOver: true
-                    }));
-                    // Save them to today's commitment
-                    CommitmentTracker.setCommitment('obligations', obligations, today);
-                }
-            }
-        }
+        // Note: incomplete obligations from yesterday are carried forward automatically
+        // during the evening check-in flow — no lazy fallback needed here.
         
         console.log('Obligations:', obligations);
         

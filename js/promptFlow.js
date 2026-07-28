@@ -1824,7 +1824,16 @@ const PromptFlow = {
         const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(logDate);
         if (!commitment?.obligations?.[index]) return;
-        commitment.obligations[index].completed = !commitment.obligations[index].completed;
+        const obligation = commitment.obligations[index];
+
+        // Task-sourced obligations: toggle the task itself, which re-syncs this entry
+        if (obligation.sourceTaskId) {
+            TaskManager.toggleTask(obligation.sourceTaskId);
+            this.renderStep();
+            return;
+        }
+
+        obligation.completed = !obligation.completed;
         StorageManager.saveCommitments(logDate, commitment);
         // Re-render current step
         this.renderStep();

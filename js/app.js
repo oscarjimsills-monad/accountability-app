@@ -373,16 +373,25 @@ const App = {
     toggleObligation(index) {
         const today = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(today);
-        
+
         if (commitment && commitment.obligations && commitment.obligations[index]) {
-            commitment.obligations[index].completed = !commitment.obligations[index].completed;
+            const obligation = commitment.obligations[index];
+
+            // Task-sourced obligations: toggle the task itself, which re-syncs this entry
+            if (obligation.sourceTaskId) {
+                TaskManager.toggleTask(obligation.sourceTaskId);
+                this.renderObligationsView();
+                return;
+            }
+
+            obligation.completed = !obligation.completed;
             StorageManager.saveCommitments(today, commitment);
-            
+
             // Re-render the view
             this.renderObligationsView();
-            
+
             // Show feedback
-            if (commitment.obligations[index].completed) {
+            if (obligation.completed) {
                 Utils.showSuccess('Obligation completed! 🎉');
             } else {
                 Utils.showInfo('Obligation marked as incomplete');

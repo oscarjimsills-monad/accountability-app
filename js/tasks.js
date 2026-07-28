@@ -39,6 +39,7 @@ const TaskManager = {
             priority: taskData.priority || 'medium',
             category: taskData.category || 'personal',
             dueDate: taskData.dueDate || null,
+            dueTime: taskData.dueTime || null,
             completed: false,
             createdAt: new Date().toISOString(),
             completedAt: null,
@@ -47,7 +48,8 @@ const TaskManager = {
 
         this.tasks.push(task);
         this.saveTasks();
-        
+        CommitmentTracker.syncTaskObligation(task);
+
         Utils.showSuccess('Task created!');
         return task;
     },
@@ -71,7 +73,8 @@ const TaskManager = {
 
         Object.assign(task, updates);
         this.saveTasks();
-        
+        CommitmentTracker.syncTaskObligation(task);
+
         Utils.showSuccess('Task updated!');
         return task;
     },
@@ -88,7 +91,8 @@ const TaskManager = {
 
         this.tasks.splice(index, 1);
         this.saveTasks();
-        
+        CommitmentTracker.removeTaskObligation(id);
+
         Utils.showSuccess('Task deleted!');
         return true;
     },
@@ -102,8 +106,9 @@ const TaskManager = {
 
         task.completed = !task.completed;
         task.completedAt = task.completed ? new Date().toISOString() : null;
-        
+
         this.saveTasks();
+        CommitmentTracker.syncTaskObligation(task);
         return task;
     },
 
@@ -310,7 +315,7 @@ const TaskManager = {
                 <div class="task-footer">
                     <div class="task-meta">
                         <span class="task-category">${task.category}</span>
-                        ${task.dueDate ? `<span class="task-due-date">${Utils.formatDate(task.dueDate)}</span>` : ''}
+                        ${task.dueDate ? `<span class="task-due-date">${Utils.formatDate(task.dueDate)}${task.dueTime ? ' at ' + Utils.formatTimeString(task.dueTime) : ''}</span>` : ''}
                     </div>
                     <div class="task-actions">
                         <button class="btn-icon" onclick="TaskManager.showEditTaskModal('${task.id}')" title="Edit">
@@ -371,11 +376,19 @@ const TaskManager = {
                                 </div>
                             </div>
                             
-                            <div class="form-group">
-                                <label for="task-due-date">Due Date</label>
-                                <input type="date" id="task-due-date" class="input-date">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="task-due-date">Due Date</label>
+                                    <input type="date" id="task-due-date" class="input-date">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="task-due-time">Due Time</label>
+                                    <input type="time" id="task-due-time" class="input-time">
+                                </div>
                             </div>
-                            
+                            <p class="form-hint">Tasks with a due date automatically appear as an obligation for that day.</p>
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="TaskManager.closeModal()">
                                     Cancel
@@ -441,11 +454,19 @@ const TaskManager = {
                                 </div>
                             </div>
                             
-                            <div class="form-group">
-                                <label for="task-due-date">Due Date</label>
-                                <input type="date" id="task-due-date" class="input-date" value="${task.dueDate ? (task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate) : ''}">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="task-due-date">Due Date</label>
+                                    <input type="date" id="task-due-date" class="input-date" value="${task.dueDate ? (task.dueDate.includes('T') ? task.dueDate.split('T')[0] : task.dueDate) : ''}">
+                                </div>
+
+                                <div class="form-group">
+                                    <label for="task-due-time">Due Time</label>
+                                    <input type="time" id="task-due-time" class="input-time" value="${task.dueTime || ''}">
+                                </div>
                             </div>
-                            
+                            <p class="form-hint">Tasks with a due date automatically appear as an obligation for that day.</p>
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="TaskManager.closeModal()">
                                     Cancel
@@ -473,7 +494,8 @@ const TaskManager = {
             description: document.getElementById('task-description').value.trim(),
             priority: document.getElementById('task-priority').value,
             category: document.getElementById('task-category').value,
-            dueDate: document.getElementById('task-due-date').value || null
+            dueDate: document.getElementById('task-due-date').value || null,
+            dueTime: document.getElementById('task-due-time').value || null
         };
 
         this.createTask(taskData);
@@ -492,7 +514,8 @@ const TaskManager = {
             description: document.getElementById('task-description').value.trim(),
             priority: document.getElementById('task-priority').value,
             category: document.getElementById('task-category').value,
-            dueDate: document.getElementById('task-due-date').value || null
+            dueDate: document.getElementById('task-due-date').value || null,
+            dueTime: document.getElementById('task-due-time').value || null
         };
 
         this.updateTask(taskId, updates);

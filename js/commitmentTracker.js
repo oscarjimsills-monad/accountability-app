@@ -67,6 +67,55 @@ const CommitmentTracker = {
     },
 
     /**
+     * Sync a task's linked obligation entry.
+     *
+     * Tasks with a due date automatically materialize as a real obligation on
+     * that date's commitment — tagged with sourceTaskId so it stays in sync.
+     * This makes every existing obligations consumer (dashboard, obligations
+     * view, evening review, carry-forward, weekly stats, history) work with
+     * zero changes, since it's just a normal obligation living in the normal
+     * place — not a virtual/computed item.
+     *
+     * Called on task create/update/toggle. Removes any stale linked entry
+     * first (covers the due date having moved), then re-adds it at the
+     * task's current due date if one is set.
+     */
+    syncTaskObligation(task) {
+        this.removeTaskObligation(task.id);
+
+        if (!task.dueDate) return;
+
+        const commitments = StorageManager.getCommitments(task.dueDate) || this.createEmptyCommitment(task.dueDate);
+        if (!commitments.obligations) commitments.obligations = [];
+
+        commitments.obligations.push({
+            sourceTaskId: task.id,
+            title: task.title,
+            time: task.dueTime || '',
+            completed: task.completed,
+            completedAt: task.completedAt || null
+        });
+
+        StorageManager.saveCommitments(task.dueDate, commitments);
+    },
+
+    /**
+     * Remove a task's linked obligation from wherever it currently lives.
+     * Searches every date since the task's due date may have changed since
+     * the obligation was last materialized.
+     */
+    removeTaskObligation(taskId) {
+        const all = StorageManager.getAllCommitments();
+        Object.keys(all).forEach(date => {
+            const commitments = all[date];
+            if (commitments?.obligations?.some(o => o.sourceTaskId === taskId)) {
+                commitments.obligations = commitments.obligations.filter(o => o.sourceTaskId !== taskId);
+                StorageManager.saveCommitments(date, commitments);
+            }
+        });
+    },
+
+    /**
      * Update obligation status
      */
     updateObligation(date, obligationIndex, completed, reason = null) {

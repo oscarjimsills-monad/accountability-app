@@ -109,6 +109,12 @@
     gap: 1rem;
 }
 
+.form-hint {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin: -0.75rem 0 1.25rem;
+}
+
 .input-text,
 .input-textarea,
 .input-select,

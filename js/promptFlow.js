@@ -1111,6 +1111,47 @@ const PromptFlow = {
             },
 
             {
+                name: 'habits-review',
+                skippable: true,
+                render: (data) => {
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
+                    const habits = HabitManager.getTodayHabits().filter(h => {
+                        const created = h.createdDate || Utils.getDateString(new Date(h.createdAt));
+                        return created <= logDate;
+                    });
+
+                    if (habits.length === 0) return `
+                        <div class="prompt-screen habits-review">
+                            <h2>✅ Habits</h2>
+                            <p class="subtitle">No habits to review for today.</p>
+                        </div>
+                    `;
+
+                    return `
+                        <div class="prompt-screen habits-review">
+                            <h2>✅ Habits</h2>
+                            <p class="subtitle">Which habits did you complete today?</p>
+                            <div class="habits-checklist">
+                                ${habits.map(habit => {
+                                    const done = HabitManager.isCompleted(habit.id, logDate);
+                                    return `
+                                        <div class="habit-check-item ${done ? 'checked' : ''}"
+                                             onclick="PromptFlow.toggleHabitReview('${habit.id}')"
+                                             data-habit-id="${habit.id}">
+                                            <span class="habit-check-box">${done ? '✓' : ''}</span>
+                                            <span class="habit-check-name">${Utils.escapeHtml(habit.name)}</span>
+                                            <span class="habit-check-cat">${habit.category}</span>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    `;
+                },
+                setupListeners: (data) => {}
+            },
+
+            {
                 name: 'day-review',
                 skippable: true,
                 render: (data) => {
@@ -1787,6 +1828,18 @@ const PromptFlow = {
         StorageManager.saveCommitments(logDate, commitment);
         // Re-render current step
         this.renderStep();
+    },
+
+    toggleHabitReview(habitId) {
+        const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
+        HabitManager.toggleHabit(habitId, logDate);
+        // Update the item visually without re-rendering the whole step
+        const item = document.querySelector(`.habit-check-item[data-habit-id="${habitId}"]`);
+        if (item) {
+            const done = HabitManager.isCompleted(habitId, logDate);
+            item.classList.toggle('checked', done);
+            item.querySelector('.habit-check-box').textContent = done ? '✓' : '';
+        }
     },
 
     walkthroughSkip() {

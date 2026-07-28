@@ -849,4 +849,66 @@
 
 .btn-icon:hover { opacity: 1; }
 
+/* ─── Habits Review Step ─────────────────────────────────────────────────── */
+.habits-checklist {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 1rem;
+}
+
+.habit-check-item {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--border-color);
+    background: var(--prompt-card);
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+    user-select: none;
+}
+
+.habit-check-item:hover {
+    border-color: var(--primary-color);
+}
+
+.habit-check-item.checked {
+    border-color: var(--success-color);
+    background: var(--success-bg);
+}
+
+.habit-check-box {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    border: 2px solid var(--border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.85rem;
+    font-weight: 700;
+    flex-shrink: 0;
+    color: white;
+    background: transparent;
+    transition: background 0.15s, border-color 0.15s;
+}
+
+.habit-check-item.checked .habit-check-box {
+    background: var(--success-color);
+    border-color: var(--success-color);
+}
+
+.habit-check-name {
+    flex: 1;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.habit-check-cat {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
 /* Made with Bob */

@@ -45,10 +45,18 @@ const Utils = {
     },
 
     /**
-     * Get current date string (YYYY-MM-DD)
+     * Format a date as YYYY-MM-DD using LOCAL calendar fields (not UTC —
+     * toISOString() converts to UTC first, which silently shifts the date
+     * across timezone boundaries depending on time of day).
      */
     getDateString(date = new Date()) {
-        // Handle if date is already a string
+        // Already a plain YYYY-MM-DD string — return as-is. Parsing this into
+        // a Date would treat it as UTC midnight (per the ISO spec for
+        // date-only strings), and reading local fields back off that can
+        // shift it a day in the other direction for timezones behind UTC.
+        if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            return date;
+        }
         if (typeof date === 'string') {
             date = new Date(date);
         }
@@ -56,7 +64,10 @@ const Utils = {
         if (!(date instanceof Date) || isNaN(date.getTime())) {
             date = new Date();
         }
-        return date.toISOString().split('T')[0];
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
     },
 
 

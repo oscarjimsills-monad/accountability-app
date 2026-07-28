@@ -48,7 +48,7 @@ const Dashboard = {
                 <div class="dashboard-section">
                     <h2>📅 Today</h2>
                     <div class="today-grid">
-                        ${this.renderTodayTasks(stats.tasks)}
+                        ${this.renderTasksCard()}
                         ${this.renderTodayHabits(stats.habits)}
                     </div>
                 </div>
@@ -278,34 +278,37 @@ const Dashboard = {
     },
 
     /**
-     * Render today's tasks section
+     * Render tasks section — all incomplete tasks, overdue first, then by
+     * priority (high→low), then by soonest due date within each tier.
      */
-    renderTodayTasks(taskStats) {
-        const todayTasks = TaskManager.getTodayTasks();
-        const overdueTasks = TaskManager.getOverdueTasks();
+    renderTasksCard() {
+        const tasks = TaskManager.getAllIncompleteSorted();
+        const today = Utils.getLogDateString();
 
         return `
             <div class="today-card">
                 <div class="today-card-header">
                     <h3>✓ Tasks</h3>
-                    <span class="badge">${todayTasks.length}</span>
+                    <span class="badge">${tasks.length}</span>
                 </div>
                 <div class="today-card-body">
-                    ${todayTasks.length > 0 ? `
+                    ${tasks.length > 0 ? `
                         <ul class="quick-list">
-                            ${todayTasks.slice(0, 5).map(task => `
-                                <li>
-                                    <input type="checkbox" 
-                                           onchange="TaskManager.toggleTask('${task.id}'); Dashboard.render();">
-                                    <span>${Utils.escapeHtml(task.title)}</span>
-                                </li>
-                            `).join('')}
+                            ${tasks.slice(0, 5).map(task => {
+                                const overdue = task.dueDate && task.dueDate < today;
+                                return `
+                                    <li class="${overdue ? 'overdue' : ''}">
+                                        <input type="checkbox"
+                                               onchange="TaskManager.toggleTask('${task.id}'); Dashboard.render();">
+                                        <span class="task-priority-dot priority-${task.priority}"></span>
+                                        <span>${Utils.escapeHtml(task.title)}</span>
+                                        ${overdue ? '<span class="overdue-tag">overdue</span>' : ''}
+                                    </li>
+                                `;
+                            }).join('')}
                         </ul>
-                        ${todayTasks.length > 5 ? `<p class="more-text">+${todayTasks.length - 5} more</p>` : ''}
-                    ` : '<p class="empty-text">No tasks for today</p>'}
-                    ${overdueTasks.length > 0 ? `
-                        <p class="warning-text">⚠️ ${overdueTasks.length} overdue task${overdueTasks.length > 1 ? 's' : ''}</p>
-                    ` : ''}
+                        ${tasks.length > 5 ? `<p class="more-text">+${tasks.length - 5} more</p>` : ''}
+                    ` : '<p class="empty-text">No tasks pending</p>'}
                 </div>
                 <div class="today-card-footer">
                     <a href="#" onclick="App.showView('tasks'); return false;">View all →</a>

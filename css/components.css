@@ -614,6 +614,31 @@
 .quick-list li.completed span { text-decoration: line-through; }
 .quick-list input[type="checkbox"] { cursor: pointer; }
 
+.quick-list li.overdue { color: var(--error-text); }
+
+.task-priority-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.task-priority-dot.priority-high   { background: var(--priority-high-text); }
+.task-priority-dot.priority-medium { background: var(--priority-medium-text); }
+.task-priority-dot.priority-low    { background: var(--priority-low-text); }
+
+.overdue-tag {
+    margin-left: auto;
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--error-text);
+    background: var(--error-bg);
+    border-radius: 4px;
+    padding: 1px 6px;
+    flex-shrink: 0;
+}
+
 .more-text {
     text-align: center;
     color: var(--text-secondary);

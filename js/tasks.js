@@ -181,6 +181,34 @@ const TaskManager = {
     },
 
     /**
+     * Get all incomplete tasks, sorted for the dashboard:
+     * overdue first (regardless of priority), then by priority (high→low),
+     * then by soonest due date within each priority tier. Tasks with no due
+     * date sort last within their tier.
+     */
+    getAllIncompleteSorted() {
+        const today = Utils.getLogDateString();
+        const priorityOrder = { high: 0, medium: 1, low: 2 };
+        const isOverdue = t => !!(t.dueDate && t.dueDate < today);
+
+        return this.tasks
+            .filter(t => !t.completed)
+            .sort((a, b) => {
+                const aOverdue = isOverdue(a);
+                const bOverdue = isOverdue(b);
+                if (aOverdue !== bOverdue) return aOverdue ? -1 : 1;
+
+                const prioDiff = priorityOrder[a.priority] - priorityOrder[b.priority];
+                if (prioDiff !== 0) return prioDiff;
+
+                if (!a.dueDate && !b.dueDate) return 0;
+                if (!a.dueDate) return 1;
+                if (!b.dueDate) return -1;
+                return a.dueDate.localeCompare(b.dueDate);
+            });
+    },
+
+    /**
      * Get overdue tasks
      */
     getOverdueTasks() {

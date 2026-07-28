@@ -72,7 +72,7 @@ const TimeTracker = {
             endTime: new Date().toISOString(),
             duration: this.calculateDuration(this.activeTimer.startTime, new Date().toISOString()),
             notes: notes,
-            date: Utils.getDateString(this.activeTimer.startTime)
+            date: this.getLogDateForTimestamp(this.activeTimer.startTime)
         };
 
         this.timeEntries.push(entry);
@@ -132,6 +132,21 @@ const TimeTracker = {
     },
 
     /**
+     * Given a timestamp, return which log-date it belongs to (5am boundary).
+     * Shared by stopTimer/createEntry/updateEntry so the rule can't drift
+     * out of sync between the live-timer path and the manual-entry path.
+     */
+    getLogDateForTimestamp(isoString) {
+        const d = new Date(isoString);
+        if (d.getHours() < 5) {
+            const prevDay = new Date(d);
+            prevDay.setDate(prevDay.getDate() - 1);
+            return Utils.getDateString(prevDay);
+        }
+        return Utils.getDateString(d);
+    },
+
+    /**
      * Get active timer duration
      */
     getActiveTimerDuration() {
@@ -143,19 +158,8 @@ const TimeTracker = {
      * Create manual time entry
      */
     createEntry(entryData) {
-        // Calculate log date based on 5am boundary
-        const startDate = new Date(entryData.startTime);
-        const hour = startDate.getHours();
-        let logDate;
-        if (hour < 5) {
-            // Before 5am, belongs to previous day
-            const prevDay = new Date(startDate);
-            prevDay.setDate(prevDay.getDate() - 1);
-            logDate = Utils.getDateString(prevDay);
-        } else {
-            logDate = Utils.getDateString(startDate);
-        }
-        
+        const logDate = this.getLogDateForTimestamp(entryData.startTime);
+
         const entry = {
             id: Utils.generateId(),
             activity: entryData.activity,
@@ -190,17 +194,7 @@ const TimeTracker = {
         // Recalculate duration and date if times changed
         if (updates.startTime || updates.endTime) {
             entry.duration = this.calculateDuration(entry.startTime, entry.endTime);
-            
-            // Recalculate log date based on 5am boundary
-            const startDate = new Date(entry.startTime);
-            const hour = startDate.getHours();
-            if (hour < 5) {
-                const prevDay = new Date(startDate);
-                prevDay.setDate(prevDay.getDate() - 1);
-                entry.date = Utils.getDateString(prevDay);
-            } else {
-                entry.date = Utils.getDateString(startDate);
-            }
+            entry.date = this.getLogDateForTimestamp(entry.startTime);
         }
         
         this.saveTimeEntries();
@@ -253,7 +247,7 @@ const TimeTracker = {
      * Get this week's entries
      */
     getWeekEntries() {
-        const today = new Date();
+        const today = new Date(Utils.getLogDateString() + 'T12:00:00');
         const startOfWeek = new Date(today);
         startOfWeek.setDate(today.getDate() - today.getDay());
         
@@ -407,14 +401,14 @@ const TimeTracker = {
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="entry-start">Start Time *</label>
-                                    <input type="datetime-local" id="entry-start" class="input-datetime" 
-                                           value="${oneHourAgo.toISOString().slice(0, 16)}" required>
+                                    <input type="datetime-local" id="entry-start" class="input-datetime"
+                                           value="${this.formatDatetimeLocal(oneHourAgo.toISOString())}" required>
                                 </div>
                                 
                                 <div class="form-group">
                                     <label for="entry-end">End Time *</label>
-                                    <input type="datetime-local" id="entry-end" class="input-datetime" 
-                                           value="${now.toISOString().slice(0, 16)}" required>
+                                    <input type="datetime-local" id="entry-end" class="input-datetime"
+                                           value="${this.formatDatetimeLocal(now.toISOString())}" required>
                                 </div>
                             </div>
                             

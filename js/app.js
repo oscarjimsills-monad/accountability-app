@@ -165,6 +165,15 @@ const App = {
         setInterval(() => {
             this.updateTimerDisplay();
         }, 1000);
+
+        // Flush any pending debounced Supabase sync immediately when the tab
+        // is hidden/closed — otherwise edits made in the last couple of
+        // seconds before closing never make it to the cloud.
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') {
+                StorageManager.flushSyncNow();
+            }
+        });
     },
 
     /**
@@ -271,25 +280,20 @@ const App = {
      * Render obligations view
      */
     renderObligationsView() {
-        console.log('renderObligationsView called');
         const container = document.getElementById('main-content');
         if (!container) {
             console.error('main-content container not found');
             return;
         }
         const today = Utils.getLogDateString();
-        console.log('Today:', today);
         const commitment = StorageManager.getCommitments(today);
-        console.log('Commitment:', commitment);
-        
+
         // Get obligations from today's commitment
         let obligations = (commitment && commitment.obligations) ? commitment.obligations : [];
-        
+
         // Note: incomplete obligations from yesterday are carried forward automatically
         // during the evening check-in flow — no lazy fallback needed here.
-        
-        console.log('Obligations:', obligations);
-        
+
         const pending = obligations.filter(o => !o.completed);
         const completed = obligations.filter(o => o.completed);
         const totalCount = obligations.length;
@@ -991,7 +995,8 @@ const App = {
         const firstDate = existingDates.length > 0 ? existingDates[0] : Utils.getLogDateString();
         const dates = [];
         const [year, month, day] = firstDate.split('-').map(Number);
-        for (let d = new Date(year, month - 1, day); d <= new Date(); d.setDate(d.getDate() + 1)) {
+        const lastDate = new Date(Utils.getLogDateString() + 'T12:00:00');
+        for (let d = new Date(year, month - 1, day); d <= lastDate; d.setDate(d.getDate() + 1)) {
             dates.push(Utils.getDateString(d));
         }
         dates.reverse();
@@ -1069,9 +1074,9 @@ const App = {
                              onclick="App.showDayDetail('${date}')">
                             <div class="day-header">
                                 <div class="day-date">
-                                    <div class="day-weekday">${new Date(date).toLocaleDateString('en-US', { weekday: 'short' })}</div>
-                                    <div class="day-number">${new Date(date).getDate()}</div>
-                                    <div class="day-month">${new Date(date).toLocaleDateString('en-US', { month: 'short' })}</div>
+                                    <div class="day-weekday">${new Date(date + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' })}</div>
+                                    <div class="day-number">${new Date(date + 'T12:00:00').getDate()}</div>
+                                    <div class="day-month">${new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short' })}</div>
                                 </div>
                                 <div class="day-status">
                                     ${wakeupMet === true ? '✅' : wakeupMet === false ? '❌' : '⏳'}
@@ -1141,8 +1146,7 @@ const App = {
             return entryDate === date;
         });
 
-        const dateObj = new Date(date);
-        const formattedDate = Utils.formatDate(dateObj, 'long');
+        const formattedDate = Utils.formatDate(date, 'long');
 
         // ── Screentime content ──────────────────────────────────────────────
         const screentimeContent = screentimeEntry ? `
@@ -1797,7 +1801,7 @@ showEditDayModal(date) {
         <div class="modal-overlay" onclick="App.closeModal()">
             <div class="modal-content" onclick="event.stopPropagation()">
                 <div class="modal-header">
-                    <h2>✏️ Edit ${Utils.formatDate(new Date(date), 'long')}</h2>
+                    <h2>✏️ Edit ${Utils.formatDate(date, 'long')}</h2>
                     <button class="btn-close" onclick="App.closeModal()">✕</button>
                 </div>
                 <div class="modal-body">

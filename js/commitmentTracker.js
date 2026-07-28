@@ -268,30 +268,39 @@ const CommitmentTracker = {
             d.setDate(d.getDate() - 1);
         }
 
-        // Longest: walk all commitments to find longest historical run
+        // Longest: walk all commitments forward, tracking the longest run of
+        // consecutive fully-logged days. Each date's own morningDone status
+        // is what makes THAT date complete — consecutiveness with the
+        // previous date extends the run, it doesn't borrow completeness
+        // from a neighbour.
         const allDates = Object.keys(allCommitments).sort();
         let tempStreak = 0;
-        for (let i = 0; i < allDates.length - 1; i++) {
-            const date = allDates[i];
+        let prevDate = null;
+
+        for (const date of allDates) {
             const commitment = allCommitments[date];
-            if (!commitment) { tempStreak = 0; continue; }
-            const morningDone = commitment.wakeup && (
+            const morningDone = commitment?.wakeup && (
                 commitment.wakeup.actual !== undefined ||
                 commitment.wakeup.met !== undefined
             );
-            // Check next date is consecutive
-            const nextD = new Date(date + 'T12:00:00');
-            nextD.setDate(nextD.getDate() + 1);
-            const nextDate = Utils.getDateString(nextD);
-            const consecutive = allDates[i + 1] === nextDate;
 
-            if (morningDone && consecutive) {
-                tempStreak++;
-                longest = Math.max(longest, tempStreak + 1);
-            } else {
+            if (!morningDone) {
                 tempStreak = 0;
+                prevDate = date;
+                continue;
             }
+
+            const d = new Date(date + 'T12:00:00');
+            d.setDate(d.getDate() - 1);
+            const expectedPrev = Utils.getDateString(d);
+            const consecutive = prevDate === expectedPrev;
+
+            tempStreak = consecutive ? tempStreak + 1 : 1;
+            longest = Math.max(longest, tempStreak);
+            prevDate = date;
         }
+
+        longest = Math.max(longest, current);
 
         return { current, longest };
     },
@@ -394,7 +403,7 @@ const CommitmentTracker = {
         const logDate = new Date(logDateStr + 'T12:00:00');
         if (logDate.getDay() !== 0) return; // Only on Sunday
 
-        const thisWeekKey = this.getWeekKey();
+        const thisWeekKey = this.getWeekKey(logDate);
         const lastReview = StorageManager.getLastWeeklyReview();
         if (lastReview === thisWeekKey) return; // Already reviewed
 

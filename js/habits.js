@@ -358,7 +358,7 @@ const HabitManager = {
         const habit = this.getHabit(id);
         if (!habit) return 0;
 
-        const endDate = new Date();
+        const endDate = new Date(Utils.getLogDateString() + 'T12:00:00');
         const startDate = new Date(endDate);
         startDate.setDate(startDate.getDate() - days);
 
@@ -397,8 +397,11 @@ const HabitManager = {
      * Excludes archived and currently paused habits.
      */
     getTodayHabits() {
-        const today = new Date().getDay(); // 0 = Sunday
         const todayStr = Utils.getLogDateString();
+        // Anchor to the log-date (5am boundary) rather than the raw clock —
+        // otherwise a Monday-only habit could show as due at 1am Monday even
+        // though the app still considers it "Sunday night" for logging purposes.
+        const today = new Date(todayStr + 'T12:00:00').getDay(); // 0 = Sunday
 
         return this.getActiveHabits().filter(habit => {
             // Skip paused habits

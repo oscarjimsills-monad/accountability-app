@@ -106,18 +106,22 @@ const DataManager = {
     /**
      * Clear all data
      */
-    clearAllData() {
+    async clearAllData() {
         if (!confirm('⚠️ This will delete ALL your data permanently. Are you absolutely sure?')) {
             return false;
         }
-        
+
         if (!confirm('This cannot be undone. Export a backup first if needed. Continue?')) {
             return false;
         }
-        
+
         const success = StorageManager.clear();
-        
+
         if (success) {
+            // Also delete the cloud copy — otherwise the next load pulls the
+            // old data straight back via loadFromSupabase() and silently
+            // undoes this entire action.
+            await StorageManager.clearSupabaseData();
             Utils.showSuccess('All data cleared. Reloading...');
             setTimeout(() => {
                 window.location.reload();
@@ -125,7 +129,7 @@ const DataManager = {
         } else {
             Utils.showError('Failed to clear data');
         }
-        
+
         return success;
     },
 

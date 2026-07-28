@@ -12,11 +12,20 @@ const Utils = {
     },
 
     /**
-     * Format date to readable string
+     * Format date to readable string.
+     *
+     * If given a bare YYYY-MM-DD string, anchor to local noon before
+     * constructing the Date — otherwise it parses as UTC midnight, which
+     * toLocaleDateString then renders through the local timezone, silently
+     * shifting the displayed day (and weekday name) back one day for any
+     * timezone behind UTC.
      */
     formatDate(date, format = 'short') {
+        if (typeof date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+            date = date + 'T12:00:00';
+        }
         const d = new Date(date);
-        const options = format === 'short' 
+        const options = format === 'short'
             ? { month: 'short', day: 'numeric', year: 'numeric' }
             : { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
         return d.toLocaleDateString('en-US', options);
@@ -160,12 +169,20 @@ const Utils = {
     },
 
     /**
-     * Calculate time difference in minutes
+     * Calculate time difference in minutes (time2 - time1), handling midnight
+     * wraparound. Without this, a bedtime commitment of 23:00 with an actual
+     * bedtime of 00:30 computes as -1350 minutes (since 00:30 is numerically
+     * "earlier" in minutes-since-midnight) instead of +90 minutes late — the
+     * single most common way a bedtime commitment actually gets missed.
      */
     timeDifferenceMinutes(time1, time2) {
         const minutes1 = this.parseTimeToMinutes(time1);
         const minutes2 = this.parseTimeToMinutes(time2);
-        return minutes2 - minutes1;
+        let diff = minutes2 - minutes1;
+        // If time2 looks like it's more than 12 hours "before" time1, it's far
+        // more likely time2 actually fell on the next calendar day.
+        if (diff < -720) diff += 1440;
+        return diff;
     },
 
     /**

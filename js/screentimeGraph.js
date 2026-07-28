@@ -232,7 +232,11 @@ const ScreentimeGraph = {
         const allDates = entries.map(e => e.date).sort();
         const dataStart = allDates[0];
 
-        const today  = new Date();
+        // Anchor to the log-date (5am boundary), matching how entries are
+        // actually keyed and how _computeTrend's "today" is derived — using
+        // raw new Date() here would disagree with that in the midnight-5am
+        // window and show one extra guaranteed-empty trailing day.
+        const today  = new Date(Utils.getLogDateString() + 'T12:00:00');
         const startD = new Date(today);
 
         if (zoomDays === null) {
@@ -588,7 +592,11 @@ const ScreentimeGraph = {
     },
 
     _fmtDateLabel(dateStr, totalDays) {
-        const d = new Date(dateStr);
+        // Anchor to local noon — new Date(dateStr) alone parses a bare
+        // YYYY-MM-DD string as UTC midnight, which toLocaleDateString then
+        // renders through the local timezone, shifting the day backward for
+        // any timezone behind UTC.
+        const d = new Date(dateStr + 'T12:00:00');
         if (totalDays <= 14)  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
         if (totalDays <= 90)  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
         if (totalDays <= 365) return d.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
@@ -596,7 +604,7 @@ const ScreentimeGraph = {
     },
 
     _fmtDateFull(dateStr) {
-        return new Date(dateStr).toLocaleDateString('en-GB', {
+        return new Date(dateStr + 'T12:00:00').toLocaleDateString('en-GB', {
             weekday: 'short', day: 'numeric', month: 'short', year: 'numeric'
         });
     },

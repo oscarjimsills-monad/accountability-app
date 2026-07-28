@@ -410,10 +410,15 @@ const PromptFlow = {
                     const wakeupStreak = CommitmentTracker.calculateWakeupStreak();
                     const weeklyScore = CommitmentTracker.calculateWeeklyScore();
 
-                    // Count obligations completed this week
+                    // Count obligations completed this week.
+                    // Anchor to local noon — weekKey is a bare YYYY-MM-DD string,
+                    // which new Date() parses as UTC midnight; without the
+                    // anchor, .setDate()/.getDate() (local-time methods) could
+                    // shift the whole 7-day window a day for timezones behind UTC.
                     let obTotal = 0, obCompleted = 0;
+                    const weekStartDate = new Date(weekKey + 'T12:00:00');
                     for (let i = 0; i < 7; i++) {
-                        const d = new Date(weekKey);
+                        const d = new Date(weekStartDate);
                         d.setDate(d.getDate() + i);
                         const c = allCommitments[Utils.getDateString(d)];
                         if (c?.obligations) {
@@ -424,7 +429,9 @@ const PromptFlow = {
 
                     // Total time tracked this week
                     const weekStart = weekKey;
-                    const weekEnd = Utils.getDateString(new Date(new Date(weekKey).setDate(new Date(weekKey).getDate() + 6)));
+                    const weekEndDate = new Date(weekKey + 'T12:00:00');
+                    weekEndDate.setDate(weekEndDate.getDate() + 6);
+                    const weekEnd = Utils.getDateString(weekEndDate);
                     const weekEntries = TimeTracker.getEntriesByDateRange(weekStart, weekEnd);
                     const totalTracked = weekEntries.reduce((sum, e) => sum + e.duration, 0);
                     const avgFocus = weekEntries.filter(e => e.focusRating).length > 0
@@ -432,7 +439,9 @@ const PromptFlow = {
                         : null;
 
                     // Previous week's goals
-                    const prevWeekKey = Utils.getDateString(new Date(new Date(weekKey).setDate(new Date(weekKey).getDate() - 7)));
+                    const prevWeekDate = new Date(weekKey + 'T12:00:00');
+                    prevWeekDate.setDate(prevWeekDate.getDate() - 7);
+                    const prevWeekKey = Utils.getDateString(prevWeekDate);
                     const prevReview = StorageManager.getWeeklyReviews()[prevWeekKey];
                     const prevGoals = prevReview?.goals || [];
 
@@ -808,7 +817,7 @@ const PromptFlow = {
                         
                         // Load existing time entries for this log day
                         // Need to include entries from the next calendar day if they're before 5am
-                        const nextDay = new Date(logDate);
+                        const nextDay = new Date(logDate + 'T12:00:00');
                         nextDay.setDate(nextDay.getDate() + 1);
                         const nextDayStr = Utils.getDateString(nextDay);
                         
@@ -1191,10 +1200,6 @@ const PromptFlow = {
                 name: 'wakeup-commitment',
                 skippable: false,
                 render: (data) => {
-                    const tomorrow = new Date();
-                    tomorrow.setDate(tomorrow.getDate() + 1);
-                    const tomorrowStr = Utils.getDateString(tomorrow);
-                    
                     return `
                         <div class="prompt-screen commitment-screen">
                             <h2>⏰ Wake-up Commitment</h2>
@@ -1441,9 +1446,8 @@ const PromptFlow = {
                         const wakeup = data.wakeupCommitment;
                         
                         if (bedtime && wakeup) {
-                            let sleepMinutes = Utils.timeDifferenceMinutes(bedtime, wakeup);
-                            if (sleepMinutes < 0) sleepMinutes += 24 * 60; // Next day
-                            
+                            const sleepMinutes = Utils.timeDifferenceMinutes(bedtime, wakeup);
+
                             const hours = Math.floor(sleepMinutes / 60);
                             const mins = sleepMinutes % 60;
                             
@@ -1612,6 +1616,16 @@ const PromptFlow = {
             const alreadyReviewed = StorageManager.getLastWeeklyReview() === weekKey;
 
             if (isSunday && !alreadyReviewed) {
+                // Persist the pending key explicitly, derived from the confirmed
+                // date — not the raw clock. completeWeeklyFlow() falls back to
+                // CommitmentTracker.getWeekKey() (current moment) if no pending
+                // key is set, which would misfile the review under the wrong
+                // week for a late catch-up check-in (e.g. logging Sunday's
+                // evening from Monday night).
+                if (!StorageManager.getPendingWeeklyReview()) {
+                    StorageManager.savePendingWeeklyReview(weekKey);
+                }
+
                 this.pausedEveningFlow = {
                     flowData: this.flowData,
                     nextStep: this.currentStep + 1
@@ -1941,8 +1955,13 @@ const PromptFlow = {
         const startMinutes = wt.pendingStartMinutes;
         const duration = wt.pendingDuration;
 
-        // Build ISO start/end times for the entry
-        const logDateObj = new Date(logDate);
+        // Build ISO start/end times for the entry. Anchor to local noon —
+        // logDate is a bare YYYY-MM-DD string, which new Date() parses as UTC
+        // midnight. In a timezone behind UTC that instant falls on the
+        // PREVIOUS local calendar day, and setHours() below preserves
+        // whatever local date it lands on — silently saving every walkthrough
+        // time entry one day earlier than the confirmed evening date.
+        const logDateObj = new Date(logDate + 'T12:00:00');
         const startTime = new Date(logDateObj);
         startTime.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
         const endTime = new Date(startTime.getTime() + duration * 60000);

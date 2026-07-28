@@ -299,7 +299,11 @@ const GoalManager = {
      */
     renderGoalCard(goal) {
         const progressClass = goal.progress >= 75 ? 'high' : goal.progress >= 50 ? 'medium' : 'low';
-        const daysRemaining = goal.targetDate ? Utils.daysBetween(new Date(), goal.targetDate) : null;
+        // Pass a bare date string, not a full timestamp — daysBetween parses
+        // both sides the same way (UTC midnight), so mixing a real "now"
+        // timestamp against a date-only string made the count drift by a day
+        // depending on what time of day the goal was viewed.
+        const daysRemaining = goal.targetDate ? Utils.daysBetween(Utils.getLogDateString(), goal.targetDate) : null;
 
         return `
             <div class="goal-card" data-goal-id="${goal.id}">

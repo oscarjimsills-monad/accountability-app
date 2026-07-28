@@ -39,7 +39,7 @@ const ShoppingListManager = {
         }
 
         const item = {
-            id: Date.now().toString(),
+            id: Utils.generateId(),
             name: name.trim(),
             quantity: quantity.trim(),
             category: category.trim(),
@@ -212,6 +212,9 @@ const ShoppingListManager = {
                     const data = JSON.parse(event.target.result);
                     
                     if (data.type === 'shoppingList') {
+                        if (!confirm('This will replace your current shopping list. Continue?')) {
+                            return;
+                        }
                         // Import only shopping list
                         if (StorageManager.importShoppingList(data)) {
                             this.loadItems();

@@ -223,14 +223,17 @@ const TaskManager = {
      * Get upcoming tasks
      */
     getUpcomingTasks(days = 7) {
-        const today = new Date();
-        const future = new Date(today);
+        // Compare plain date strings directly — mixing a full "now" timestamp
+        // against a date-only dueDate (parsed as UTC midnight) could exclude
+        // a task due today once it's afternoon, depending on timezone offset.
+        const today = Utils.getLogDateString();
+        const future = new Date(today + 'T12:00:00');
         future.setDate(future.getDate() + days);
-        
+        const futureStr = Utils.getDateString(future);
+
         return this.tasks.filter(task => {
             if (task.completed || !task.dueDate) return false;
-            const dueDate = new Date(task.dueDate);
-            return dueDate >= today && dueDate <= future;
+            return task.dueDate >= today && task.dueDate <= futureStr;
         });
     },
 

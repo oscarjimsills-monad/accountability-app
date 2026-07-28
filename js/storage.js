@@ -56,6 +56,36 @@ const StorageManager = {
     },
 
     /**
+     * Force an immediate sync, bypassing the debounce. Call this before any
+     * action that could lose unsaved changes — signing out, or the tab being
+     * closed/hidden — since the debounced timer alone won't survive those.
+     */
+    async flushSyncNow() {
+        if (this._syncTimer) {
+            clearTimeout(this._syncTimer);
+            this._syncTimer = null;
+        }
+        await this.syncToSupabase();
+    },
+
+    /**
+     * Delete this user's row entirely from Supabase. Without this,
+     * clear() only wipes localStorage — the next app load pulls the old
+     * cloud snapshot straight back via loadFromSupabase(), silently undoing
+     * "Delete All Data".
+     */
+    async clearSupabaseData() {
+        try {
+            if (!window.AuthManager?.isAuthenticated()) return;
+            const user = AuthManager.getUser();
+            const { error } = await SupabaseClient.from('user_data').delete().eq('user_id', user.id);
+            if (error) console.error('Supabase clear error:', error);
+        } catch (error) {
+            console.error('Supabase clear error:', error);
+        }
+    },
+
+    /**
      * Push all localStorage data to Supabase for the current user
      */
     async syncToSupabase() {
@@ -341,7 +371,12 @@ const StorageManager = {
                 shoppingList: this.getShoppingList(),
                 screentime: this.load(STORAGE_KEYS.SCREENTIME) || [],
                 weeklyReviews: this.getWeeklyReviews(),
-                lastWeeklyReview: this.getLastWeeklyReview()
+                lastWeeklyReview: this.getLastWeeklyReview(),
+                // These three were missing — a restored backup would silently
+                // reset morning/evening check-in gating and weekly-review status.
+                lastCheckin: this.getLastCheckin(),
+                lastEveningCheckin: this.getLastEveningCheckin(),
+                pendingWeeklyReview: this.getPendingWeeklyReview()
             }
         };
         return data;
@@ -356,7 +391,11 @@ const StorageManager = {
                 throw new Error('Invalid data format');
             }
 
-            const { tasks, habits, goals, timeEntries, reflections, commitments, settings, userName, shoppingList, screentime, weeklyReviews, lastWeeklyReview } = data.data;
+            const {
+                tasks, habits, goals, timeEntries, reflections, commitments,
+                settings, userName, shoppingList, screentime, weeklyReviews,
+                lastWeeklyReview, lastCheckin, lastEveningCheckin, pendingWeeklyReview
+            } = data.data;
 
             if (tasks) this.saveTasks(tasks);
             if (habits) this.saveHabits(habits);
@@ -370,6 +409,9 @@ const StorageManager = {
             if (screentime) this.save(STORAGE_KEYS.SCREENTIME, screentime);
             if (weeklyReviews) this.save(STORAGE_KEYS.WEEKLY_REVIEWS, weeklyReviews);
             if (lastWeeklyReview) this.save(STORAGE_KEYS.LAST_WEEKLY_REVIEW, lastWeeklyReview);
+            if (lastCheckin) this.saveLastCheckin(lastCheckin);
+            if (lastEveningCheckin) this.saveLastEveningCheckin(lastEveningCheckin);
+            if (pendingWeeklyReview) this.savePendingWeeklyReview(pendingWeeklyReview);
 
             return true;
         } catch (error) {

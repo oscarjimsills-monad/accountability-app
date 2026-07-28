@@ -276,7 +276,11 @@ const ScreentimeTracker = {
         const dayCounts = {};
         
         entries.forEach(entry => {
-            const date = new Date(entry.date);
+            // Anchor to local noon — entry.date is a bare YYYY-MM-DD string,
+            // which new Date() parses as UTC midnight. toLocaleDateString
+            // then renders that through the local timezone, which can name
+            // the wrong weekday entirely for timezones behind UTC.
+            const date = new Date(entry.date + 'T12:00:00');
             const dayName = date.toLocaleDateString('en-US', { weekday: 'long' });
             
             if (!dayTotals[dayName]) {
@@ -365,29 +369,27 @@ const ScreentimeTracker = {
         let currentStreak = 0;
         let longestStreak = 0;
         let tempStreak = 0;
-        let lastDate = null;
-        
-        // Calculate current streak (from today backwards)
+
+        // Calculate current streak (from today backwards). If today has no
+        // entry yet, skip it (the day isn't over) rather than treating it as
+        // a break — otherwise the streak would read 0 for most of every day.
         const today = Utils.getLogDateString();
-        let checkDate = new Date();
-        
+        let checkDate = new Date(today + 'T12:00:00');
+        const todayEntry = this.entries.find(e => e.date === today);
+        if (!todayEntry) {
+            checkDate.setDate(checkDate.getDate() - 1);
+        }
+
         for (let i = 0; i < 365; i++) { // Check up to a year
             const dateStr = Utils.getDateString(checkDate);
             const entry = this.entries.find(e => e.date === dateStr);
-            
+
             if (entry && entry.totalMinutes <= goalMinutes) {
-                if (dateStr === today || (lastDate && this.isConsecutiveDay(dateStr, lastDate))) {
-                    currentStreak++;
-                    lastDate = dateStr;
-                } else {
-                    break;
-                }
-            } else if (dateStr === today || (lastDate && this.isConsecutiveDay(dateStr, lastDate))) {
-                // Entry exists but over goal, or no entry for consecutive day
+                currentStreak++;
+                checkDate.setDate(checkDate.getDate() - 1);
+            } else {
                 break;
             }
-            
-            checkDate.setDate(checkDate.getDate() - 1);
         }
         
         // Calculate longest streak

@@ -26,7 +26,7 @@ const Dashboard = {
             <div class="dashboard">
                 <div class="dashboard-header">
                     <h1>Dashboard</h1>
-                    <p class="dashboard-date">${Utils.formatDate(new Date(Utils.getLogDateString()), 'long')}</p>
+                    <p class="dashboard-date">${Utils.formatDate(Utils.getLogDateString(), 'long')}</p>
                 </div>
 
                 <!-- Nightly Check-in Button (shown after 20:00 until completed) -->
@@ -391,7 +391,12 @@ const Dashboard = {
                 type: 'habit',
                 icon: '🔄',
                 text: `Completed habit: ${habit.name}`,
-                time: new Date().toISOString()
+                // Habits only store a completion DATE, not a time, so there's
+                // no real timestamp to use. Anchoring to midday of that date
+                // (rather than "right now") avoids habits always showing
+                // "Just now" and always sorting above genuinely more recent
+                // task completions regardless of when they actually happened.
+                time: new Date(today + 'T12:00:00').toISOString()
             });
         });
 

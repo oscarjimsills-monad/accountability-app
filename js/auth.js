@@ -56,6 +56,10 @@ const AuthManager = {
      */
     async signOut() {
         try {
+            // Flush any pending debounced sync first — otherwise edits made in
+            // the last couple of seconds are wiped by the localStorage clear
+            // below before ever reaching Supabase.
+            await StorageManager.flushSyncNow();
             await SupabaseClient.auth.signOut();
             // Clear local data on sign out so next user starts fresh
             Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));

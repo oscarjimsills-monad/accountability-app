@@ -112,10 +112,14 @@ const ReflectionManager = {
         const dates = [...new Set(this.reflections.map(r => r.date))];
         const daysWithReflections = dates.length;
         
-        // Calculate streak
+        // Calculate streak — walk backwards from today's LOG date (5am
+        // boundary), matching how reflections are actually keyed
+        // (addReflection defaults to Utils.getLogDateString()). Using the
+        // raw calendar date here would disagree with that in the midnight-5am
+        // window and break the streak a day early.
         let currentStreak = 0;
-        let checkDate = new Date();
-        
+        let checkDate = new Date(Utils.getLogDateString() + 'T12:00:00');
+
         for (let i = 0; i < 365; i++) {
             const dateStr = Utils.getDateString(checkDate);
             const hasReflection = this.reflections.some(r => r.date === dateStr);

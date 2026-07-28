@@ -7,6 +7,10 @@ const PromptFlow = {
     currentFlow: null,
     currentStep: 0,
     flowData: {},
+    // Set when the weekly review interrupts an in-progress evening check-in
+    // (see handleNext) — holds the evening flow's state so it can resume
+    // once the weekly review completes.
+    pausedEveningFlow: null,
     
     /**
      * Initialize prompt flow system
@@ -1595,7 +1599,31 @@ const PromptFlow = {
         if (step.validate && !step.validate(this.flowData)) {
             return;
         }
-        
+
+        // Right after the evening check-in's date is confirmed: if that date is
+        // a Sunday and this week hasn't been reviewed yet, interrupt the evening
+        // flow with the weekly review. The evening flow resumes automatically
+        // once the weekly review completes (see completeWeeklyFlow).
+        if (this.currentFlow === 'evening' && step.name === 'date-confirm') {
+            const confirmedDate = this.flowData.confirmedDate || Utils.getLogDateString();
+            const dateObj = new Date(confirmedDate + 'T12:00:00');
+            const isSunday = dateObj.getDay() === 0;
+            const weekKey = CommitmentTracker.getWeekKey(dateObj);
+            const alreadyReviewed = StorageManager.getLastWeeklyReview() === weekKey;
+
+            if (isSunday && !alreadyReviewed) {
+                this.pausedEveningFlow = {
+                    flowData: this.flowData,
+                    nextStep: this.currentStep + 1
+                };
+                this.currentFlow = 'weekly';
+                this.currentStep = 0;
+                this.flowData = {};
+                this.renderStep();
+                return;
+            }
+        }
+
         // Move to next step
         this.currentStep++;
         this.renderStep();
@@ -1772,6 +1800,18 @@ const PromptFlow = {
         CommitmentTracker.completeWeeklyReview();
 
         Utils.showSuccess('Weekly review complete! 🎉');
+
+        // If the weekly review interrupted an evening check-in, resume it
+        if (this.pausedEveningFlow) {
+            const resume = this.pausedEveningFlow;
+            this.pausedEveningFlow = null;
+            this.currentFlow = 'evening';
+            this.flowData = resume.flowData;
+            this.currentStep = resume.nextStep;
+            this.renderStep();
+            return;
+        }
+
         this.goToDashboard();
     },
     /**

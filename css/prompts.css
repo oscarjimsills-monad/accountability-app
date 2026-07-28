@@ -911,4 +911,10 @@
     color: var(--text-secondary);
 }
 
+.habit-check-progress {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-right: 0.5rem;
+}
+
 /* Made with Bob */

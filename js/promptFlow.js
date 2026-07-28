@@ -1147,12 +1147,22 @@ const PromptFlow = {
                             <div class="habits-checklist">
                                 ${habits.map(habit => {
                                     const done = HabitManager.isCompleted(habit.id, logDate);
+                                    let progress = '';
+                                    if (HabitManager.isSubdivided(habit)) {
+                                        const doneCount = HabitManager.getSubSlots(habit, logDate).filter(Boolean).length;
+                                        progress = `<span class="habit-check-progress">${doneCount}/${habit.subCount}</span>`;
+                                    } else if (habit.frequency === 'weekly-count') {
+                                        const weekKey = CommitmentTracker.getWeekKey(new Date(logDate + 'T12:00:00'));
+                                        const count = HabitManager.countCompletionsInWeek(habit, weekKey);
+                                        progress = `<span class="habit-check-progress">${count}/${habit.weeklyTarget} this wk</span>`;
+                                    }
                                     return `
                                         <div class="habit-check-item ${done ? 'checked' : ''}"
                                              onclick="PromptFlow.toggleHabitReview('${habit.id}')"
                                              data-habit-id="${habit.id}">
                                             <span class="habit-check-box">${done ? '✓' : ''}</span>
                                             <span class="habit-check-name">${Utils.escapeHtml(habit.name)}</span>
+                                            ${progress}
                                             <span class="habit-check-cat">${habit.category}</span>
                                         </div>
                                     `;
@@ -1895,13 +1905,25 @@ const PromptFlow = {
 
     toggleHabitReview(habitId) {
         const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
-        HabitManager.toggleHabit(habitId, logDate);
+        const habit = HabitManager.toggleNextSlot(habitId, logDate);
         // Update the item visually without re-rendering the whole step
         const item = document.querySelector(`.habit-check-item[data-habit-id="${habitId}"]`);
-        if (item) {
+        if (item && habit) {
             const done = HabitManager.isCompleted(habitId, logDate);
             item.classList.toggle('checked', done);
             item.querySelector('.habit-check-box').textContent = done ? '✓' : '';
+
+            const progressEl = item.querySelector('.habit-check-progress');
+            if (progressEl) {
+                if (HabitManager.isSubdivided(habit)) {
+                    const doneCount = HabitManager.getSubSlots(habit, logDate).filter(Boolean).length;
+                    progressEl.textContent = `${doneCount}/${habit.subCount}`;
+                } else if (habit.frequency === 'weekly-count') {
+                    const weekKey = CommitmentTracker.getWeekKey(new Date(logDate + 'T12:00:00'));
+                    const count = HabitManager.countCompletionsInWeek(habit, weekKey);
+                    progressEl.textContent = `${count}/${habit.weeklyTarget} this wk`;
+                }
+            }
         }
     },
 

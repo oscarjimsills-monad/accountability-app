@@ -40,10 +40,14 @@ const HabitManager = {
             id: Utils.generateId(),
             name: habitData.name,
             description: habitData.description || '',
-            frequency: habitData.frequency || 'daily', // daily, weekly
+            frequency: habitData.frequency || 'daily', // daily, weekly, weekly-count
             category: habitData.category || 'personal',
             targetDays: habitData.targetDays || [], // For weekly: [0,1,2,3,4,5,6]
-            completions: [], // Array of date strings
+            subCount: habitData.subCount || 1, // For daily: sub-divide into N independent checks/day
+            weeklyTarget: habitData.weeklyTarget || null, // For weekly-count: N completions needed per week (any days)
+            // Array of date strings. Sub-divided daily habits use slot-tagged
+            // entries 'YYYY-MM-DD#N' (N = 0..subCount-1) instead of a plain date.
+            completions: [],
             pausePeriods: [], // Array of { from: 'YYYY-MM-DD', to: 'YYYY-MM-DD' | null }
             createdDate: Utils.getLogDateString(), // local-time date string — use this for comparisons
             createdAt: new Date().toISOString(),
@@ -162,6 +166,137 @@ const HabitManager = {
         return habit;
     },
 
+    // ─── Sub-division & weekly-count helpers ────────────────────────────────
+
+    /**
+     * A habit is "subdivided" when it's daily and configured for more than
+     * one independent check per day (e.g. "brush teeth" x3/day).
+     */
+    isSubdivided(habit) {
+        return habit.frequency === 'daily' && (habit.subCount || 1) > 1;
+    },
+
+    /**
+     * For a subdivided habit, which of its N daily slots are checked for date.
+     */
+    getSubSlots(habit, date) {
+        const subCount = habit.subCount || 1;
+        const slots = [];
+        for (let i = 0; i < subCount; i++) {
+            slots.push(habit.completions.includes(`${date}#${i}`));
+        }
+        return slots;
+    },
+
+    /**
+     * Toggle one specific slot of a subdivided habit for a date.
+     */
+    toggleHabitSlot(id, date, slotIndex) {
+        const habit = this.getHabit(id);
+        if (!habit) return null;
+
+        const key = `${date}#${slotIndex}`;
+        const idx = habit.completions.indexOf(key);
+        if (idx > -1) {
+            habit.completions.splice(idx, 1);
+        } else {
+            habit.completions.push(key);
+            habit.completions.sort();
+        }
+        this.saveHabits();
+
+        if (this.getSubSlots(habit, date).every(Boolean)) {
+            Utils.showSuccess('Habit completed! 🎉');
+        }
+        return habit;
+    },
+
+    /**
+     * Single-click completion for compact UIs (dashboard, evening review,
+     * history). For a subdivided habit this checks the next unchecked slot,
+     * or unchecks the last slot if all are already done (so a single click
+     * still has an obvious undo). For everything else it's a plain toggle.
+     */
+    toggleNextSlot(id, date = Utils.getLogDateString()) {
+        const habit = this.getHabit(id);
+        if (!habit) return null;
+        if (!this.isSubdivided(habit)) return this.toggleHabit(id, date);
+
+        const slots = this.getSubSlots(habit, date);
+        const nextUnchecked = slots.indexOf(false);
+        const slotToToggle = nextUnchecked !== -1 ? nextUnchecked : slots.length - 1;
+        return this.toggleHabitSlot(id, date, slotToToggle);
+    },
+
+    /**
+     * How many completions fall within the week starting at weekKey (a
+     * Monday date string) — used for 'weekly-count' habits. Counts every
+     * logged instance, not just distinct days: two runs on the same day
+     * both count toward the weekly target.
+     */
+    countCompletionsInWeek(habit, weekKey) {
+        const start = new Date(weekKey + 'T12:00:00');
+        const end = new Date(start);
+        end.setDate(end.getDate() + 6);
+        const startStr = Utils.getDateString(start);
+        const endStr = Utils.getDateString(end);
+        return habit.completions.filter(c => c >= startStr && c <= endStr).length;
+    },
+
+    /**
+     * How many completions are logged for a specific date (weekly-count
+     * habits can have more than one per day).
+     */
+    countCompletionsOnDate(habit, date) {
+        return habit.completions.filter(c => c === date).length;
+    },
+
+    /**
+     * Add one completion instance for a weekly-count habit. Unlike
+     * toggleHabit, this always adds rather than toggling — so logging twice
+     * in one day genuinely counts as two toward the weekly target.
+     */
+    addWeeklyCountCompletion(id, date = Utils.getLogDateString()) {
+        const habit = this.getHabit(id);
+        if (!habit) return null;
+        habit.completions.push(date);
+        habit.completions.sort();
+        this.saveHabits();
+        return habit;
+    },
+
+    /**
+     * Remove one completion instance (the most recent) for a weekly-count
+     * habit on the given date.
+     */
+    removeWeeklyCountCompletion(id, date = Utils.getLogDateString()) {
+        const habit = this.getHabit(id);
+        if (!habit) return null;
+        const idx = habit.completions.lastIndexOf(date);
+        if (idx > -1) habit.completions.splice(idx, 1);
+        this.saveHabits();
+        return habit;
+    },
+
+    /**
+     * Whether at least one day within the week is active (not paused, not
+     * before creation). A fully-inactive week is skipped (neutral) in streaks.
+     */
+    isWeekActive(habit, weekKey) {
+        const start = new Date(weekKey + 'T12:00:00');
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(start);
+            d.setDate(d.getDate() + i);
+            if (this.isDateActive(habit, Utils.getDateString(d))) return true;
+        }
+        return false;
+    },
+
+    isWeekTargetMet(habit, weekKey) {
+        const target = habit.weeklyTarget || 1;
+        return this.countCompletionsInWeek(habit, weekKey) >= target;
+    },
+
     /**
      * Check whether a date falls before the habit was created.
      * Pre-creation days are skipped in streaks (neutral — habit didn't exist).
@@ -245,11 +380,15 @@ const HabitManager = {
     },
 
     /**
-     * Check if habit is completed for a date
+     * Check if habit is completed for a date. For a subdivided daily habit
+     * this means ALL of its sub-slots are checked, not just any one of them.
      */
     isCompleted(id, date = Utils.getLogDateString()) {
         const habit = this.getHabit(id);
         if (!habit) return false;
+        if (this.isSubdivided(habit)) {
+            return this.getSubSlots(habit, date).every(Boolean);
+        }
         return habit.completions.includes(date);
     },
 
@@ -265,20 +404,24 @@ const HabitManager = {
         const habit = this.getHabit(id);
         if (!habit) return { current: 0, longest: 0 };
 
+        if (habit.frequency === 'weekly-count') {
+            return this.calculateWeeklyCountStreak(habit);
+        }
+
         const today = Utils.getLogDateString();
         const createdDateStr = habit.createdDate || Utils.getDateString(new Date(habit.createdAt));
-        const completionSet = new Set(habit.completions);
 
         // ── Current streak ──────────────────────────────────────────────────
         // Walk backwards from today.
         // - Pre-creation days: skip (neutral)
         // - Pause period days: BREAK streak
         // - Active day not completed: BREAK streak
+        // isCompleted() handles sub-divided habits (all slots checked) too.
         let currentStreak = 0;
         let d = new Date(today + 'T12:00:00');
 
         // If today is active and not yet completed, start counting from yesterday
-        if (this.isDateActive(habit, today) && !completionSet.has(today)) {
+        if (this.isDateActive(habit, today) && !this.isCompleted(id, today)) {
             d.setDate(d.getDate() - 1);
         }
 
@@ -295,7 +438,7 @@ const HabitManager = {
                 break;
             }
 
-            if (completionSet.has(dateStr)) {
+            if (this.isCompleted(id, dateStr)) {
                 currentStreak++;
                 d.setDate(d.getDate() - 1);
             } else {
@@ -312,7 +455,9 @@ const HabitManager = {
         let longestStreak = currentStreak;
 
         if (habit.completions.length > 0) {
-            const sortedCompletions = [...habit.completions].sort();
+            // Strip slot suffixes (sub-divided habits) to get plain dates for range bounds
+            const plainDates = habit.completions.map(c => c.split('#')[0]);
+            const sortedCompletions = [...new Set(plainDates)].sort();
             const firstDate = sortedCompletions[0];
             const lastDate = sortedCompletions[sortedCompletions.length - 1];
 
@@ -336,7 +481,7 @@ const HabitManager = {
                     continue;
                 }
 
-                if (completionSet.has(dateStr)) {
+                if (this.isCompleted(id, dateStr)) {
                     tempStreak++;
                     longestStreak = Math.max(longestStreak, tempStreak);
                 } else {
@@ -351,12 +496,93 @@ const HabitManager = {
     },
 
     /**
+     * Streak calculation for 'weekly-count' habits: consecutive WEEKS (not
+     * days) where the target completion count was met. Weeks entirely before
+     * creation or entirely paused are skipped (neutral); a week with the
+     * habit active but unmet breaks the streak. The current (in-progress)
+     * week is never counted as a miss — if not yet met, the walk starts from
+     * last week instead, same "don't penalize an unfinished period" principle
+     * used for days elsewhere.
+     */
+    calculateWeeklyCountStreak(habit) {
+        const todayWeekKey = CommitmentTracker.getWeekKey(new Date(Utils.getLogDateString() + 'T12:00:00'));
+        const createdDateStr = habit.createdDate || Utils.getDateString(new Date(habit.createdAt));
+        const createdWeekKey = CommitmentTracker.getWeekKey(new Date(createdDateStr + 'T12:00:00'));
+
+        // ── Current streak: walk backwards week by week ─────────────────────
+        let currentStreak = 0;
+        let weekKey = todayWeekKey;
+
+        if (!this.isWeekTargetMet(habit, todayWeekKey)) {
+            const d = new Date(weekKey + 'T12:00:00');
+            d.setDate(d.getDate() - 7);
+            weekKey = Utils.getDateString(d);
+        }
+
+        while (weekKey >= createdWeekKey) {
+            if (!this.isWeekActive(habit, weekKey)) {
+                const d = new Date(weekKey + 'T12:00:00');
+                d.setDate(d.getDate() - 7);
+                weekKey = Utils.getDateString(d);
+                continue;
+            }
+
+            if (this.isWeekTargetMet(habit, weekKey)) {
+                currentStreak++;
+                const d = new Date(weekKey + 'T12:00:00');
+                d.setDate(d.getDate() - 7);
+                weekKey = Utils.getDateString(d);
+            } else {
+                break;
+            }
+        }
+
+        // ── Longest streak: walk forward through all weeks with any data ────
+        let longestStreak = currentStreak;
+
+        if (habit.completions.length > 0) {
+            const sortedDates = [...habit.completions].sort();
+            const firstWeekKey = CommitmentTracker.getWeekKey(new Date(sortedDates[0] + 'T12:00:00'));
+            const lastWeekKey = CommitmentTracker.getWeekKey(new Date(sortedDates[sortedDates.length - 1] + 'T12:00:00'));
+
+            let tempStreak = 0;
+            let wk = firstWeekKey;
+
+            while (wk <= lastWeekKey) {
+                if (!this.isWeekActive(habit, wk)) {
+                    const d = new Date(wk + 'T12:00:00');
+                    d.setDate(d.getDate() + 7);
+                    wk = Utils.getDateString(d);
+                    continue;
+                }
+
+                if (this.isWeekTargetMet(habit, wk)) {
+                    tempStreak++;
+                    longestStreak = Math.max(longestStreak, tempStreak);
+                } else {
+                    tempStreak = 0;
+                }
+
+                const d = new Date(wk + 'T12:00:00');
+                d.setDate(d.getDate() + 7);
+                wk = Utils.getDateString(d);
+            }
+        }
+
+        return { current: currentStreak, longest: longestStreak };
+    },
+
+    /**
      * Calculate success rate over the past N days.
      * Only active days (post-creation, not paused) count toward the total.
      */
     calculateSuccessRate(id, days = 30) {
         const habit = this.getHabit(id);
         if (!habit) return 0;
+
+        if (habit.frequency === 'weekly-count') {
+            return this.calculateWeeklyCountSuccessRate(habit, days);
+        }
 
         const endDate = new Date(Utils.getLogDateString() + 'T12:00:00');
         const startDate = new Date(endDate);
@@ -369,11 +595,36 @@ const HabitManager = {
             const dateStr = Utils.getDateString(d);
             if (this.isDateActive(habit, dateStr)) {
                 totalDays++;
-                if (habit.completions.includes(dateStr)) completedDays++;
+                if (this.isCompleted(id, dateStr)) completedDays++;
             }
         }
 
         return totalDays > 0 ? Utils.calculatePercentage(completedDays, totalDays) : 0;
+    },
+
+    /**
+     * Success rate for weekly-count habits: percentage of the last ~days/7
+     * active weeks that met the weekly target.
+     */
+    calculateWeeklyCountSuccessRate(habit, days) {
+        const numWeeks = Math.max(1, Math.round(days / 7));
+        const todayWeekKey = CommitmentTracker.getWeekKey(new Date(Utils.getLogDateString() + 'T12:00:00'));
+
+        let totalWeeks = 0;
+        let metWeeks = 0;
+        let wk = todayWeekKey;
+
+        for (let i = 0; i < numWeeks; i++) {
+            if (this.isWeekActive(habit, wk)) {
+                totalWeeks++;
+                if (this.isWeekTargetMet(habit, wk)) metWeeks++;
+            }
+            const d = new Date(wk + 'T12:00:00');
+            d.setDate(d.getDate() - 7);
+            wk = Utils.getDateString(d);
+        }
+
+        return totalWeeks > 0 ? Utils.calculatePercentage(metWeeks, totalWeeks) : 0;
     },
 
     // ─── Filters ─────────────────────────────────────────────────────────────
@@ -411,6 +662,7 @@ const HabitManager = {
 
             if (habit.frequency === 'daily') return true;
             if (habit.frequency === 'weekly' && habit.targetDays.includes(today)) return true;
+            if (habit.frequency === 'weekly-count') return true; // any day counts
             return false;
         });
     },
@@ -424,7 +676,7 @@ const HabitManager = {
         const active = this.getActiveHabits();
         const today = Utils.getLogDateString();
         const todayHabits = this.getTodayHabits();
-        const completedToday = todayHabits.filter(h => h.completions.includes(today)).length;
+        const completedToday = todayHabits.filter(h => this.isCompleted(h.id, today)).length;
 
         let totalStreaks = 0;
         let longestStreak = 0;
@@ -461,7 +713,7 @@ const HabitManager = {
             const dateStr = Utils.getDateString(d);
             calendar.push({
                 date: dateStr,
-                completed: habit.completions.includes(dateStr),
+                completed: this.isCompleted(id, dateStr),
                 active: this.isDateActive(habit, dateStr)
             });
         }
@@ -514,7 +766,9 @@ const HabitManager = {
     renderHabitCard(habit) {
         const today = Utils.getLogDateString();
         const paused = this.isPaused(habit);
-        const completed = !paused && habit.completions.includes(today);
+        const subdivided = this.isSubdivided(habit);
+        const isWeeklyCount = habit.frequency === 'weekly-count';
+        const completed = !paused && this.isCompleted(habit.id, today);
         const streak = this.calculateStreak(habit.id);
         const successRate = this.calculateSuccessRate(habit.id, 30);
 
@@ -522,13 +776,56 @@ const HabitManager = {
             ? `<span class="habit-paused-badge">Paused</span>`
             : '';
 
-        const checkBtn = paused ? '' : `
-            <button class="habit-check ${completed ? 'checked' : ''}"
-                    onclick="HabitManager.toggleHabit('${habit.id}'); HabitManager.refreshCurrentView();"
-                    title="${completed ? 'Mark incomplete' : 'Mark complete'}">
-                ${completed ? '✓' : ''}
-            </button>
-        `;
+        let checkBtn = '';
+        if (!paused && subdivided) {
+            const slots = this.getSubSlots(habit, today);
+            checkBtn = `
+                <div class="habit-subslots">
+                    ${slots.map((done, i) => `
+                        <button class="habit-subslot ${done ? 'checked' : ''}"
+                                onclick="HabitManager.toggleHabitSlot('${habit.id}', '${today}', ${i}); HabitManager.refreshCurrentView();"
+                                title="${done ? 'Mark incomplete' : 'Mark complete'}">
+                            ${done ? '✓' : i + 1}
+                        </button>
+                    `).join('')}
+                </div>
+            `;
+        } else if (!paused && isWeeklyCount) {
+            // Full +/- control here (unlike the compact dashboard/evening-review
+            // checkbox) so logging more than once in a day is actually reachable.
+            const countToday = this.countCompletionsOnDate(habit, today);
+            checkBtn = `
+                <div class="habit-count-stepper">
+                    <button class="habit-stepper-btn" ${countToday === 0 ? 'disabled' : ''}
+                            onclick="HabitManager.removeWeeklyCountCompletion('${habit.id}', '${today}'); HabitManager.refreshCurrentView();"
+                            title="Remove one completion">−</button>
+                    <span class="habit-stepper-value">${countToday}</span>
+                    <button class="habit-stepper-btn"
+                            onclick="HabitManager.addWeeklyCountCompletion('${habit.id}', '${today}'); HabitManager.refreshCurrentView();"
+                            title="Add a completion for today">+</button>
+                </div>
+            `;
+        } else if (!paused) {
+            checkBtn = `
+                <button class="habit-check ${completed ? 'checked' : ''}"
+                        onclick="HabitManager.toggleHabit('${habit.id}'); HabitManager.refreshCurrentView();"
+                        title="${completed ? 'Mark incomplete' : 'Mark complete'}">
+                    ${completed ? '✓' : ''}
+                </button>
+            `;
+        }
+
+        let weeklyProgress = '';
+        if (isWeeklyCount) {
+            const weekKey = CommitmentTracker.getWeekKey(new Date(today + 'T12:00:00'));
+            const count = this.countCompletionsInWeek(habit, weekKey);
+            const target = habit.weeklyTarget || 1;
+            const met = count >= target;
+            weeklyProgress = `<div class="habit-weekly-progress ${met ? 'met' : ''}">${count}/${target} this week${met ? ' ✓' : ''}</div>`;
+        }
+
+        const streakLabel = isWeeklyCount ? 'Wk Streak' : 'Streak';
+        const bestLabel = isWeeklyCount ? 'Best (wks)' : 'Best';
 
         const pauseResumeBtn = paused
             ? `<button class="btn btn-sm btn-secondary habit-pause-btn" onclick="HabitManager.resumeHabit('${habit.id}'); HabitManager.refreshCurrentView();">▶ Resume</button>`
@@ -545,12 +842,13 @@ const HabitManager = {
                 </div>
 
                 ${habit.description ? `<p class="habit-description">${Utils.escapeHtml(habit.description)}</p>` : ''}
+                ${weeklyProgress}
 
                 <div class="habit-stats">
                     <div class="habit-stat">
                         <span class="stat-icon">🔥</span>
                         <span class="stat-value">${streak.current}</span>
-                        <span class="stat-label">Streak</span>
+                        <span class="stat-label">${streakLabel}</span>
                     </div>
                     <div class="habit-stat">
                         <span class="stat-icon">📈</span>
@@ -560,7 +858,7 @@ const HabitManager = {
                     <div class="habit-stat">
                         <span class="stat-icon">🏆</span>
                         <span class="stat-value">${streak.longest}</span>
-                        <span class="stat-label">Best</span>
+                        <span class="stat-label">${bestLabel}</span>
                     </div>
                 </div>
 
@@ -606,6 +904,7 @@ const HabitManager = {
                                     <select id="habit-frequency" class="input-select">
                                         <option value="daily">Daily</option>
                                         <option value="weekly">Specific Days</option>
+                                        <option value="weekly-count">X Times a Week</option>
                                     </select>
                                 </div>
 
@@ -635,6 +934,18 @@ const HabitManager = {
                                 </div>
                             </div>
 
+                            <div id="daily-subcount" class="form-group">
+                                <label for="habit-subcount">Times per day (optional)</label>
+                                <input type="number" id="habit-subcount" class="input-number" min="1" max="10" value="1">
+                                <p class="help-text">e.g. 3 for "brush teeth 3x a day" — the day only counts once all are checked</p>
+                            </div>
+
+                            <div id="weekly-target" class="form-group" style="display: none;">
+                                <label for="habit-weekly-target">Times per week</label>
+                                <input type="number" id="habit-weekly-target" class="input-number" min="1" max="7" value="2">
+                                <p class="help-text">e.g. 2 for "run twice a week" — any days count, no fixed schedule</p>
+                            </div>
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="HabitManager.closeModal()">
                                     Cancel
@@ -650,11 +961,23 @@ const HabitManager = {
         `;
 
         document.getElementById('habit-frequency').addEventListener('change', (e) => {
-            document.getElementById('weekly-days').style.display =
-                e.target.value === 'weekly' ? 'block' : 'none';
+            this._syncFrequencyFields(e.target.value);
         });
 
         modal.style.display = 'flex';
+    },
+
+    /**
+     * Show/hide the frequency-specific fields (specific days / sub-count /
+     * weekly target) based on the selected frequency. Shared by create and edit.
+     */
+    _syncFrequencyFields(frequency) {
+        const weeklyDays = document.getElementById('weekly-days');
+        const dailySubcount = document.getElementById('daily-subcount');
+        const weeklyTarget = document.getElementById('weekly-target');
+        if (weeklyDays) weeklyDays.style.display = frequency === 'weekly' ? 'block' : 'none';
+        if (dailySubcount) dailySubcount.style.display = frequency === 'daily' ? 'block' : 'none';
+        if (weeklyTarget) weeklyTarget.style.display = frequency === 'weekly-count' ? 'block' : 'none';
     },
 
     /**
@@ -690,6 +1013,7 @@ const HabitManager = {
                                     <select id="habit-frequency" class="input-select">
                                         <option value="daily" ${habit.frequency === 'daily' ? 'selected' : ''}>Daily</option>
                                         <option value="weekly" ${habit.frequency === 'weekly' ? 'selected' : ''}>Specific Days</option>
+                                        <option value="weekly-count" ${habit.frequency === 'weekly-count' ? 'selected' : ''}>X Times a Week</option>
                                     </select>
                                 </div>
 
@@ -719,6 +1043,18 @@ const HabitManager = {
                                 </div>
                             </div>
 
+                            <div id="daily-subcount" class="form-group" style="display: ${habit.frequency === 'daily' ? 'block' : 'none'};">
+                                <label for="habit-subcount">Times per day (optional)</label>
+                                <input type="number" id="habit-subcount" class="input-number" min="1" max="10" value="${habit.subCount || 1}">
+                                <p class="help-text">e.g. 3 for "brush teeth 3x a day" — the day only counts once all are checked</p>
+                            </div>
+
+                            <div id="weekly-target" class="form-group" style="display: ${habit.frequency === 'weekly-count' ? 'block' : 'none'};">
+                                <label for="habit-weekly-target">Times per week</label>
+                                <input type="number" id="habit-weekly-target" class="input-number" min="1" max="7" value="${habit.weeklyTarget || 2}">
+                                <p class="help-text">e.g. 2 for "run twice a week" — any days count, no fixed schedule</p>
+                            </div>
+
                             <div class="modal-actions">
                                 <button type="button" class="btn btn-secondary" onclick="HabitManager.closeModal()">
                                     Cancel
@@ -734,8 +1070,7 @@ const HabitManager = {
         `;
 
         document.getElementById('habit-frequency').addEventListener('change', (e) => {
-            document.getElementById('weekly-days').style.display =
-                e.target.value === 'weekly' ? 'block' : 'none';
+            this._syncFrequencyFields(e.target.value);
         });
 
         modal.style.display = 'flex';
@@ -748,24 +1083,16 @@ const HabitManager = {
         event.preventDefault();
 
         const frequency = document.getElementById('habit-frequency').value;
-        let targetDays = [];
-
-        if (frequency === 'weekly') {
-            const checkboxes = document.querySelectorAll('#weekly-days input[type="checkbox"]:checked');
-            targetDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
-            if (targetDays.length === 0) {
-                Utils.showError('Please select at least one day');
-                return;
-            }
-        }
+        const targetDays = this._readTargetDays(frequency);
+        if (targetDays === null) return; // validation failed, error already shown
 
         const habitData = {
             name: document.getElementById('habit-name').value.trim(),
             description: document.getElementById('habit-description').value.trim(),
             frequency: frequency,
             category: document.getElementById('habit-category').value,
-            targetDays: targetDays
+            targetDays: targetDays,
+            ...this._readFrequencyExtras(frequency)
         };
 
         this.createHabit(habitData);
@@ -780,29 +1107,54 @@ const HabitManager = {
         event.preventDefault();
 
         const frequency = document.getElementById('habit-frequency').value;
-        let targetDays = [];
-
-        if (frequency === 'weekly') {
-            const checkboxes = document.querySelectorAll('#weekly-days input[type="checkbox"]:checked');
-            targetDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
-
-            if (targetDays.length === 0) {
-                Utils.showError('Please select at least one day');
-                return;
-            }
-        }
+        const targetDays = this._readTargetDays(frequency);
+        if (targetDays === null) return;
 
         const updates = {
             name: document.getElementById('habit-name').value.trim(),
             description: document.getElementById('habit-description').value.trim(),
             frequency: frequency,
             category: document.getElementById('habit-category').value,
-            targetDays: targetDays
+            targetDays: targetDays,
+            ...this._readFrequencyExtras(frequency)
         };
 
         this.updateHabit(habitId, updates);
         this.closeModal();
         this.refreshCurrentView();
+    },
+
+    /**
+     * Read + validate the specific-days checkboxes. Returns null (and shows
+     * an error) if frequency is 'weekly' but nothing was selected.
+     */
+    _readTargetDays(frequency) {
+        if (frequency !== 'weekly') return [];
+        const checkboxes = document.querySelectorAll('#weekly-days input[type="checkbox"]:checked');
+        const targetDays = Array.from(checkboxes).map(cb => parseInt(cb.value));
+        if (targetDays.length === 0) {
+            Utils.showError('Please select at least one day');
+            return null;
+        }
+        return targetDays;
+    },
+
+    /**
+     * Read subCount (daily sub-division) or weeklyTarget (weekly-count),
+     * whichever applies to the given frequency.
+     */
+    _readFrequencyExtras(frequency) {
+        if (frequency === 'daily') {
+            let subCount = parseInt(document.getElementById('habit-subcount').value) || 1;
+            if (subCount < 1) subCount = 1;
+            return { subCount, weeklyTarget: null };
+        }
+        if (frequency === 'weekly-count') {
+            let weeklyTarget = parseInt(document.getElementById('habit-weekly-target').value) || 1;
+            if (weeklyTarget < 1) weeklyTarget = 1;
+            return { subCount: 1, weeklyTarget };
+        }
+        return { subCount: 1, weeklyTarget: null };
     },
 
     /**
@@ -815,11 +1167,21 @@ const HabitManager = {
         const streak = this.calculateStreak(habitId);
         const successRate = this.calculateSuccessRate(habitId, 30);
         const paused = this.isPaused(habit);
+        const isWeeklyCount = habit.frequency === 'weekly-count';
+        const unit = isWeeklyCount ? 'weeks' : 'days';
+
+        let extra = '';
+        if (this.isSubdivided(habit)) {
+            extra = `Sub-divided: ${habit.subCount}x per day\n`;
+        } else if (isWeeklyCount) {
+            extra = `Target: ${habit.weeklyTarget}x per week\n`;
+        }
 
         alert(
             `${habit.name}${paused ? ' (Paused)' : ''}\n\n` +
-            `Current Streak: ${streak.current} days\n` +
-            `Longest Streak: ${streak.longest} days\n` +
+            extra +
+            `Current Streak: ${streak.current} ${unit}\n` +
+            `Longest Streak: ${streak.longest} ${unit}\n` +
             `30-day Success: ${successRate}%\n` +
             `Total Completions: ${habit.completions.length}\n` +
             `Pause periods: ${(habit.pausePeriods || []).length}`

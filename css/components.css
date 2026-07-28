@@ -360,6 +360,100 @@
     color: var(--text-on-dark);
 }
 
+.habit-subslots {
+    display: flex;
+    gap: 0.4rem;
+}
+
+.habit-subslot {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: none;
+}
+
+.habit-subslot:hover {
+    border-color: var(--success-color);
+}
+
+.habit-subslot.checked {
+    background: var(--success-color);
+    border-color: var(--success-color);
+    color: var(--text-on-dark);
+}
+
+.habit-weekly-progress {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.75rem;
+}
+
+.habit-weekly-progress.met {
+    color: var(--success-color);
+    font-weight: 600;
+}
+
+.habit-count-stepper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.habit-stepper-btn {
+    width: 28px;
+    height: 28px;
+    border: 2px solid var(--border-color);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    transition: var(--transition);
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--text-secondary);
+    background: none;
+}
+
+.habit-stepper-btn:hover:not(:disabled) {
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+}
+
+.habit-stepper-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.habit-stepper-value {
+    font-weight: 600;
+    font-size: 1rem;
+    color: var(--text-primary);
+    min-width: 1.2rem;
+    text-align: center;
+}
+
+.habit-progress-badge {
+    display: inline-block;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    background: var(--surface-2, var(--surface));
+    border: 1px solid var(--border-color);
+    border-radius: 4px;
+    padding: 1px 6px;
+    vertical-align: middle;
+}
+
 .habit-description {
     color: var(--text-secondary);
     font-size: 0.9rem;

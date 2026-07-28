@@ -1250,6 +1250,17 @@ const App = {
                 ${allHabits.map(habit => {
                     const completed = HabitManager.isCompleted(habit.id, date);
                     const streak = HabitManager.calculateStreak(habit.id);
+                    const isWeeklyCount = habit.frequency === 'weekly-count';
+                    const streakUnit = isWeeklyCount ? 'week' : 'day';
+                    let progress = '';
+                    if (HabitManager.isSubdivided(habit)) {
+                        const doneCount = HabitManager.getSubSlots(habit, date).filter(Boolean).length;
+                        progress = `<span class="habit-progress-badge">${doneCount}/${habit.subCount}</span>`;
+                    } else if (isWeeklyCount) {
+                        const weekKey = CommitmentTracker.getWeekKey(new Date(date + 'T12:00:00'));
+                        const count = HabitManager.countCompletionsInWeek(habit, weekKey);
+                        progress = `<span class="habit-progress-badge">${count}/${habit.weeklyTarget} this wk</span>`;
+                    }
                     return `
                         <div class="habit-detail-item ${completed ? 'completed' : 'incomplete'}">
                             <button class="habit-toggle-btn"
@@ -1258,10 +1269,10 @@ const App = {
                                 ${completed ? '✓' : '○'}
                             </button>
                             <div class="habit-detail-info">
-                                <div class="habit-detail-name">${Utils.escapeHtml(habit.name)}</div>
+                                <div class="habit-detail-name">${Utils.escapeHtml(habit.name)} ${progress}</div>
                                 <div class="habit-detail-meta">
                                     <span class="habit-category-badge">${habit.category}</span>
-                                    <span class="habit-streak">🔥 ${streak.current} day streak</span>
+                                    <span class="habit-streak">🔥 ${streak.current} ${streakUnit} streak</span>
                                 </div>
                             </div>
                         </div>
@@ -1347,7 +1358,7 @@ const App = {
      * Toggle habit completion for a historical date
      */
     toggleHistoricalHabit(habitId, date) {
-        const habit = HabitManager.toggleHabit(habitId, date);
+        const habit = HabitManager.toggleNextSlot(habitId, date);
         if (habit) {
             const isCompleted = HabitManager.isCompleted(habitId, date);
             Utils.showSuccess(isCompleted ? 'Habit marked complete! 🎉' : 'Habit marked incomplete');

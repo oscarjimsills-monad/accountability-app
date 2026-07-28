@@ -334,13 +334,22 @@ const Dashboard = {
                     ${todayHabits.length > 0 ? `
                         <ul class="quick-list">
                             ${todayHabits.slice(0, 5).map(habit => {
-                                const completed = habit.completions.includes(today);
+                                const completed = HabitManager.isCompleted(habit.id, today);
+                                let suffix = '';
+                                if (HabitManager.isSubdivided(habit)) {
+                                    const doneCount = HabitManager.getSubSlots(habit, today).filter(Boolean).length;
+                                    suffix = ` (${doneCount}/${habit.subCount})`;
+                                } else if (habit.frequency === 'weekly-count') {
+                                    const weekKey = CommitmentTracker.getWeekKey(new Date(today + 'T12:00:00'));
+                                    const count = HabitManager.countCompletionsInWeek(habit, weekKey);
+                                    suffix = ` (${count}/${habit.weeklyTarget} this wk)`;
+                                }
                                 return `
                                     <li class="${completed ? 'completed' : ''}">
-                                        <input type="checkbox" 
+                                        <input type="checkbox"
                                                ${completed ? 'checked' : ''}
-                                               onchange="HabitManager.toggleHabit('${habit.id}'); Dashboard.render();">
-                                        <span>${Utils.escapeHtml(habit.name)}</span>
+                                               onchange="HabitManager.toggleNextSlot('${habit.id}'); Dashboard.render();">
+                                        <span>${Utils.escapeHtml(habit.name)}${suffix}</span>
                                     </li>
                                 `;
                             }).join('')}

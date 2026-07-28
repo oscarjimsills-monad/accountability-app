@@ -1656,8 +1656,8 @@ const App = {
             }
 
             if (streakElement) {
-                const stats = CommitmentTracker.getStats();
-                streakElement.textContent = `🔥 ${stats.currentStreak}`;
+                const logged = CommitmentTracker.calculateLoggedStreak();
+                streakElement.textContent = `${logged.current} days logged`;
             }
 
             if (userNameEl) {

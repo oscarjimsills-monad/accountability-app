@@ -182,6 +182,72 @@ const CommitmentTracker = {
     },
 
     /**
+     * Calculate streak of fully-logged days.
+     * A day is fully logged when:
+     *   - The evening check-in was completed on that date (commitment exists), AND
+     *   - The morning check-in was completed the next day (commitment.wakeup has data)
+     * Today can never be fully logged yet (the next morning hasn't happened).
+     */
+    calculateLoggedStreak() {
+        const allCommitments = StorageManager.getAllCommitments();
+        const today = Utils.getLogDateString();
+
+        // Start from yesterday and walk backwards
+        let d = new Date(today + 'T12:00:00');
+        d.setDate(d.getDate() - 1);
+
+        let current = 0;
+        let longest = 0;
+
+        while (true) {
+            const dateStr = Utils.getDateString(d);
+            const commitment = allCommitments[dateStr];
+
+            // Evening check-in done: commitment exists
+            if (!commitment) break;
+
+            // Morning check-in done: wakeup data present on this date's commitment
+            // (morning check-in of date+1 saves wakeup data back to dateStr)
+            const morningDone = commitment.wakeup && (
+                commitment.wakeup.actual !== undefined ||
+                commitment.wakeup.met !== undefined
+            );
+            if (!morningDone) break;
+
+            current++;
+            longest = Math.max(longest, current);
+            d.setDate(d.getDate() - 1);
+        }
+
+        // Longest: walk all commitments to find longest historical run
+        const allDates = Object.keys(allCommitments).sort();
+        let tempStreak = 0;
+        for (let i = 0; i < allDates.length - 1; i++) {
+            const date = allDates[i];
+            const commitment = allCommitments[date];
+            if (!commitment) { tempStreak = 0; continue; }
+            const morningDone = commitment.wakeup && (
+                commitment.wakeup.actual !== undefined ||
+                commitment.wakeup.met !== undefined
+            );
+            // Check next date is consecutive
+            const nextD = new Date(date + 'T12:00:00');
+            nextD.setDate(nextD.getDate() + 1);
+            const nextDate = Utils.getDateString(nextD);
+            const consecutive = allDates[i + 1] === nextDate;
+
+            if (morningDone && consecutive) {
+                tempStreak++;
+                longest = Math.max(longest, tempStreak + 1);
+            } else {
+                tempStreak = 0;
+            }
+        }
+
+        return { current, longest };
+    },
+
+    /**
      * Calculate weekly wake-up score
      */
     calculateWeeklyScore(endDate = Utils.getLogDateString()) {

@@ -1257,31 +1257,38 @@ const PromptFlow = {
                     `;
                 },
                 setupListeners: (data) => {
-                    // Carry forward incomplete obligations from the previous evening —
-                    // but only once per flow session (flag prevents re-running on back/forward).
+                    // Carry forward incomplete obligations from the date just closed
+                    // out in THIS session (data.confirmedDate — the same date the
+                    // 'obligations-review' step a few screens back just reviewed) —
+                    // but only once per flow session (flag prevents re-running on
+                    // back/forward).
+                    //
+                    // This must NOT use StorageManager.getLastEveningCheckin(): that
+                    // value is only updated at the very end of completeEveningFlow(),
+                    // so mid-flow it still points at the PREVIOUS completed session's
+                    // date — one check-in behind — whose obligations were already
+                    // carried forward during that earlier session itself. Reading it
+                    // here meant "missed" was almost always empty, silently skipping
+                    // carry-forward for the obligations just reviewed moments ago.
                     if (!data.obligationsInitialized) {
                         data.obligationsInitialized = true;
-                        const lastEveningDate = StorageManager.getLastEveningCheckin();
-                        if (lastEveningDate) {
-                            const previousCommitment = StorageManager.getCommitments(lastEveningDate);
-                            const missed = (previousCommitment?.obligations || []).filter(o => !o.completed);
-                            if (missed.length > 0) {
-                                const carried = missed.map(o => ({
-                                    title: o.title,
-                                    time: o.time || '',
-                                    completed: false,
-                                    carriedOver: true
-                                }));
-                                // Prepend carried items; keep any the user already added,
-                                // skipping duplicates (match by lowercased title).
-                                const carriedTitles = new Set(carried.map(o => o.title.toLowerCase()));
-                                const userAdded = (data.obligations || []).filter(
-                                    o => !carriedTitles.has(o.title.toLowerCase())
-                                );
-                                data.obligations = [...carried, ...userAdded];
-                            } else {
-                                data.obligations = data.obligations || [];
-                            }
+                        const logDate = data.confirmedDate || Utils.getLogDateString();
+                        const todaysCommitment = StorageManager.getCommitments(logDate);
+                        const missed = (todaysCommitment?.obligations || []).filter(o => !o.completed);
+                        if (missed.length > 0) {
+                            const carried = missed.map(o => ({
+                                title: o.title,
+                                time: o.time || '',
+                                completed: false,
+                                carriedOver: true
+                            }));
+                            // Prepend carried items; keep any the user already added,
+                            // skipping duplicates (match by lowercased title).
+                            const carriedTitles = new Set(carried.map(o => o.title.toLowerCase()));
+                            const userAdded = (data.obligations || []).filter(
+                                o => !carriedTitles.has(o.title.toLowerCase())
+                            );
+                            data.obligations = [...carried, ...userAdded];
                         } else {
                             data.obligations = data.obligations || [];
                         }

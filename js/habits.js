@@ -667,16 +667,50 @@ const HabitManager = {
         });
     },
 
+    /**
+     * Split a list of habits into Daily / Weekly tabs.
+     * - Daily: 'daily' habits, plus 'weekly' (specific-days) habits that are
+     *   scheduled for today.
+     * - Weekly: 'weekly-count' habits, plus 'weekly' habits not scheduled
+     *   for today.
+     * A specific-days habit therefore moves between tabs depending on the day.
+     */
+    splitHabitsByTab(habits) {
+        const todayStr = Utils.getLogDateString();
+        const today = new Date(todayStr + 'T12:00:00').getDay();
+        const daily = [];
+        const weekly = [];
+
+        habits.forEach(habit => {
+            if (habit.frequency === 'daily') {
+                daily.push(habit);
+            } else if (habit.frequency === 'weekly-count') {
+                weekly.push(habit);
+            } else if (habit.frequency === 'weekly') {
+                if ((habit.targetDays || []).includes(today)) {
+                    daily.push(habit);
+                } else {
+                    weekly.push(habit);
+                }
+            }
+        });
+
+        return { daily, weekly };
+    },
+
     // ─── Stats summary ───────────────────────────────────────────────────────
 
     /**
-     * Get habit statistics
+     * Get habit statistics. "Today" counts and the completion rate only
+     * reflect Daily-tab habits (daily + specific-days habits due today) —
+     * weekly-count habits track their own weekly progress instead, so mixing
+     * them into a daily % would make the number meaningless.
      */
     getStats() {
         const active = this.getActiveHabits();
         const today = Utils.getLogDateString();
-        const todayHabits = this.getTodayHabits();
-        const completedToday = todayHabits.filter(h => this.isCompleted(h.id, today)).length;
+        const dailyTabToday = this.getTodayHabits().filter(h => h.frequency !== 'weekly-count');
+        const completedToday = dailyTabToday.filter(h => this.isCompleted(h.id, today)).length;
 
         let totalStreaks = 0;
         let longestStreak = 0;
@@ -689,10 +723,10 @@ const HabitManager = {
 
         return {
             total: active.length,
-            todayTotal: todayHabits.length,
+            todayTotal: dailyTabToday.length,
             todayCompleted: completedToday,
-            todayRemaining: todayHabits.length - completedToday,
-            completionRate: Utils.calculatePercentage(completedToday, todayHabits.length),
+            todayRemaining: dailyTabToday.length - completedToday,
+            completionRate: Utils.calculatePercentage(completedToday, dailyTabToday.length),
             averageStreak: active.length > 0 ? Math.round(totalStreaks / active.length) : 0,
             longestStreak
         };
@@ -724,7 +758,7 @@ const HabitManager = {
     // ─── Rendering ───────────────────────────────────────────────────────────
 
     /**
-     * Render habit list — active habits first, then a collapsed paused section
+     * Render habit list — Daily/Weekly collapsible sections, then a paused section
      */
     renderHabitList(containerId) {
         const container = document.getElementById(containerId);
@@ -746,7 +780,16 @@ const HabitManager = {
             return;
         }
 
-        let html = activeHabits.map(habit => this.renderHabitCard(habit)).join('');
+        const { daily, weekly } = this.splitHabitsByTab(activeHabits);
+
+        let html = '<div class="habit-tabs accordion-list">';
+        if (daily.length > 0) {
+            html += App.accordionSection('habits-daily', `☀️ Daily (${daily.length})`, daily.map(habit => this.renderHabitCard(habit)).join(''), true);
+        }
+        if (weekly.length > 0) {
+            html += App.accordionSection('habits-weekly', `📆 Weekly (${weekly.length})`, weekly.map(habit => this.renderHabitCard(habit)).join(''), true);
+        }
+        html += '</div>';
 
         if (pausedHabits.length > 0) {
             html += `

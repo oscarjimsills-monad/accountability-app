@@ -1357,7 +1357,7 @@
 }
 
 .accordion-section.open .accordion-body {
-    max-height: 2000px;
+    max-height: 20000px;
 }
 
 .accordion-inner {

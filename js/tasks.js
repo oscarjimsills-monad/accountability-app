@@ -11,6 +11,24 @@ const TaskManager = {
      */
     init() {
         this.loadTasks();
+        this.syncAllTaskObligations();
+    },
+
+    /**
+     * Ensure every dated task has a correctly materialized obligation. Runs
+     * on every load — cheap and self-healing, since syncTaskObligation always
+     * removes any stale linked entry before re-adding. This is what actually
+     * backfills tasks that already had a due date set before this
+     * materialization feature existed (createTask/updateTask/toggleTask only
+     * sync going forward from when they're called, so a task nobody has
+     * touched since would otherwise never get an obligation at all).
+     */
+    syncAllTaskObligations() {
+        this.tasks.forEach(task => {
+            if (task.dueDate) {
+                CommitmentTracker.syncTaskObligation(task);
+            }
+        });
     },
 
     /**

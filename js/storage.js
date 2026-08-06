@@ -21,9 +21,22 @@ const STORAGE_KEYS = {
     SCREENTIME: 'accountability_screentime'
 };
 
+// Local-only sync bookkeeping — deliberately NOT part of STORAGE_KEYS, since
+// these describe *this device's* sync state and must never round-trip
+// through the cloud (pushing/pulling them would mix up different devices'
+// bookkeeping). Used to make sure a cloud pull can never clobber local edits
+// that haven't been confirmed pushed yet.
+const SYNC_META_KEYS = {
+    LAST_EDIT_AT: 'accountability_lastLocalEditAt',
+    LAST_SYNCED_AT: 'accountability_lastSyncedAt'
+};
+
 const StorageManager = {
     // Debounce timer for Supabase sync
     _syncTimer: null,
+    // Set once a sync failure has been surfaced to the user, so a long
+    // offline stretch doesn't spam a toast on every debounced retry
+    _syncFailureWarned: false,
 
     /**
      * Save data to localStorage, then schedule a background Supabase sync
@@ -32,6 +45,7 @@ const StorageManager = {
         try {
             const serialized = JSON.stringify(data);
             localStorage.setItem(key, serialized);
+            localStorage.setItem(SYNC_META_KEYS.LAST_EDIT_AT, new Date().toISOString());
             this.scheduleSyncToSupabase();
             return true;
         } catch (error) {
@@ -86,11 +100,13 @@ const StorageManager = {
     },
 
     /**
-     * Push all localStorage data to Supabase for the current user
+     * Push all localStorage data to Supabase for the current user.
+     * Returns true only on a confirmed successful push — callers rely on
+     * this to know whether it's now safe to treat the cloud as up to date.
      */
     async syncToSupabase() {
         try {
-            if (!window.AuthManager?.isAuthenticated()) return;
+            if (!window.AuthManager?.isAuthenticated()) return false;
             const user = AuthManager.getUser();
 
             // Collect every accountability_ key into one object
@@ -111,21 +127,74 @@ const StorageManager = {
                     updated_at: new Date().toISOString()
                 }, { onConflict: 'user_id' });
 
-            if (error) console.error('Supabase sync error:', error);
+            if (error) {
+                console.error('Supabase sync error:', error);
+                this._warnSyncFailure();
+                return false;
+            }
+
+            localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
+            this._syncFailureWarned = false;
+            return true;
         } catch (error) {
             console.error('Supabase sync error:', error);
+            this._warnSyncFailure();
+            return false;
         }
     },
 
     /**
-     * Pull data from Supabase and write it into localStorage
-     * Called once on app load — Supabase is source of truth
+     * Surface a sync failure to the user instead of only logging it —
+     * silent failures here are exactly what let 3 days of check-ins get
+     * lost to a stale cloud pull. Only warns once per offline/failure
+     * stretch (reset on the next successful sync) so a long outage doesn't
+     * spam a toast on every debounced retry.
+     */
+    _warnSyncFailure() {
+        if (this._syncFailureWarned) return;
+        this._syncFailureWarned = true;
+        Utils.showError("Couldn't sync to the cloud — your changes are saved on this device and will sync once you're back online.");
+    },
+
+    /**
+     * Whether this device has local edits that haven't been confirmed
+     * pushed to Supabase yet (e.g. saved while offline).
+     */
+    hasUnsyncedChanges() {
+        const lastEditAt = localStorage.getItem(SYNC_META_KEYS.LAST_EDIT_AT);
+        if (!lastEditAt) return false;
+        const lastSyncedAt = localStorage.getItem(SYNC_META_KEYS.LAST_SYNCED_AT);
+        return !lastSyncedAt || lastEditAt > lastSyncedAt;
+    },
+
+    /**
+     * Pull data from Supabase and write it into localStorage.
+     * Called once on app load.
+     *
+     * Cloud is only trusted as source of truth when this device has no
+     * unsynced local edits. If it does (e.g. this device was offline and
+     * kept logging locally), a stale cloud snapshot must never clobber
+     * that — instead we push local up first, and only overwrite local
+     * data if that push actually succeeds. This is what silently failed
+     * before: the old version always overwrote local with the cloud copy
+     * on load, so a run of failed background syncs (offline, expired
+     * session, etc.) meant the next reload permanently wiped every local
+     * change made since the last successful sync.
      */
     async loadFromSupabase() {
         try {
             if (!window.AuthManager?.isAuthenticated()) return false;
-            const user = AuthManager.getUser();
 
+            if (this.hasUnsyncedChanges()) {
+                // syncToSupabase() already warns the user on failure.
+                const pushed = await this.syncToSupabase();
+                // Whether it succeeded or not, local data must not be overwritten:
+                // on success it already matches the cloud; on failure the cloud
+                // snapshot is stale and must not clobber what's on this device.
+                return pushed;
+            }
+
+            const user = AuthManager.getUser();
             const { data, error } = await SupabaseClient
                 .from('user_data')
                 .select('data')
@@ -144,6 +213,7 @@ const StorageManager = {
                 });
             }
 
+            localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
             return true;
         } catch (error) {
             console.error('Supabase load error:', error);
@@ -184,6 +254,9 @@ const StorageManager = {
     clear() {
         try {
             Object.values(STORAGE_KEYS).forEach(key => {
+                localStorage.removeItem(key);
+            });
+            Object.values(SYNC_META_KEYS).forEach(key => {
                 localStorage.removeItem(key);
             });
             return true;

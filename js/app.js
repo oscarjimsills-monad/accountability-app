@@ -1139,6 +1139,20 @@ const App = {
 
     showDayDetail(date) {
         const container = document.getElementById('main-content');
+
+        // Habit toggles and time-entry edits/deletes re-render this whole view
+        // by calling showDayDetail() again. Without this, every accordion
+        // section would snap back to its default open/closed state on every
+        // such refresh — looking like the section (or "the page") just closed
+        // itself mid-edit. Capture what's currently open (only on a refresh —
+        // on the very first render there's nothing to capture yet, so the
+        // per-section defaults below still apply) and restore it after rebuild.
+        const isRefresh = !!container.querySelector('.day-detail.accordion-list');
+        const openSections = isRefresh
+            ? new Set(Array.from(container.querySelectorAll('.accordion-section.open')).map(el => el.id))
+            : null;
+        const wasOpen = (id, defaultOpen = false) => openSections ? openSections.has(`acc-${id}`) : defaultOpen;
+
         const commitment = StorageManager.getCommitments(date);
         const screentimeEntry = ScreentimeTracker.getEntry(date);
         const timeEntries = TimeTracker.timeEntries.filter(entry => {
@@ -1341,14 +1355,14 @@ const App = {
             </div>
 
             <div class="day-detail accordion-list">
-                ${this.accordionSection('screentime', '📱 Screentime', screentimeContent, true)}
-                ${wakeupContent     ? this.accordionSection('wakeup',      '⏰ Wake-up Time',     wakeupContent)      : ''}
-                ${obligationsContent ? this.accordionSection('obligations', '📋 Obligations',      obligationsContent) : ''}
-                ${prioritiesContent  ? this.accordionSection('priorities',  '🎯 Priorities',       prioritiesContent)  : ''}
-                ${habitsContent      ? this.accordionSection('habits',      '✅ Habits',           habitsContent)      : ''}
-                ${timeContent        ? this.accordionSection('time',        '⏱️ Time Tracked',     timeContent)        : ''}
-                ${reflectionsContent ? this.accordionSection('reflections', '💭 Reflections',      reflectionsContent) : ''}
-                ${distContent        ? this.accordionSection('dist',        '⏱️ Time Distribution',distContent)        : ''}
+                ${this.accordionSection('screentime', '📱 Screentime', screentimeContent, wasOpen('screentime', true))}
+                ${wakeupContent     ? this.accordionSection('wakeup',      '⏰ Wake-up Time',     wakeupContent,      wasOpen('wakeup'))      : ''}
+                ${obligationsContent ? this.accordionSection('obligations', '📋 Obligations',      obligationsContent, wasOpen('obligations')) : ''}
+                ${prioritiesContent  ? this.accordionSection('priorities',  '🎯 Priorities',       prioritiesContent,  wasOpen('priorities'))  : ''}
+                ${habitsContent      ? this.accordionSection('habits',      '✅ Habits',           habitsContent,      wasOpen('habits'))      : ''}
+                ${timeContent        ? this.accordionSection('time',        '⏱️ Time Tracked',     timeContent,        wasOpen('time'))        : ''}
+                ${reflectionsContent ? this.accordionSection('reflections', '💭 Reflections',      reflectionsContent, wasOpen('reflections')) : ''}
+                ${distContent        ? this.accordionSection('dist',        '⏱️ Time Distribution',distContent,        wasOpen('dist'))        : ''}
                 ${!hasAnyData ? '<div class="empty-state"><p>No data logged for this day</p></div>' : ''}
             </div>
         `;

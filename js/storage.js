@@ -28,7 +28,13 @@ const STORAGE_KEYS = {
 // that haven't been confirmed pushed yet.
 const SYNC_META_KEYS = {
     LAST_EDIT_AT: 'accountability_lastLocalEditAt',
-    LAST_SYNCED_AT: 'accountability_lastSyncedAt'
+    LAST_SYNCED_AT: 'accountability_lastSyncedAt',
+    // The cloud row's own `updated_at` as of the last time we confirmed it —
+    // set from the real column value on a pull, or from the timestamp we
+    // just wrote on a successful push. This is what's shown to the user as
+    // "backed up X ago"; left untouched on a failed push, since the cloud
+    // genuinely wasn't updated then.
+    CLOUD_UPDATED_AT: 'accountability_cloudUpdatedAt'
 };
 
 const StorageManager = {
@@ -79,7 +85,7 @@ const StorageManager = {
             clearTimeout(this._syncTimer);
             this._syncTimer = null;
         }
-        await this.syncToSupabase();
+        return await this.syncToSupabase();
     },
 
     /**
@@ -119,12 +125,13 @@ const StorageManager = {
                 }
             });
 
+            const now = new Date().toISOString();
             const { error } = await SupabaseClient
                 .from('user_data')
                 .upsert({
                     user_id: user.id,
                     data: data,
-                    updated_at: new Date().toISOString()
+                    updated_at: now
                 }, { onConflict: 'user_id' });
 
             if (error) {
@@ -133,7 +140,8 @@ const StorageManager = {
                 return false;
             }
 
-            localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
+            localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, now);
+            localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, now);
             this._syncFailureWarned = false;
             return true;
         } catch (error) {
@@ -168,6 +176,15 @@ const StorageManager = {
     },
 
     /**
+     * When the cloud backup was actually last updated (the real Supabase
+     * `updated_at` column, not just "when we last checked"). Null if this
+     * device has never synced.
+     */
+    getCloudUpdatedAt() {
+        return localStorage.getItem(SYNC_META_KEYS.CLOUD_UPDATED_AT);
+    },
+
+    /**
      * Pull data from Supabase and write it into localStorage.
      * Called once on app load.
      *
@@ -197,7 +214,7 @@ const StorageManager = {
             const user = AuthManager.getUser();
             const { data, error } = await SupabaseClient
                 .from('user_data')
-                .select('data')
+                .select('data, updated_at')
                 .eq('user_id', user.id)
                 .single();
 
@@ -214,6 +231,9 @@ const StorageManager = {
             }
 
             localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
+            if (data?.updated_at) {
+                localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, data.updated_at);
+            }
             return true;
         } catch (error) {
             console.error('Supabase load error:', error);

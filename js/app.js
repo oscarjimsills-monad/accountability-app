@@ -166,6 +166,12 @@ const App = {
             this.updateTimerDisplay();
         }, 1000);
 
+        // Keep the "backed up X ago" header text fresh even when nothing
+        // else happens to trigger a header update
+        setInterval(() => {
+            this.updateSyncStatus();
+        }, 30000);
+
         // Flush any pending debounced Supabase sync immediately when the tab
         // is hidden/closed — otherwise edits made in the last couple of
         // seconds before closing never make it to the cloud.
@@ -1709,8 +1715,52 @@ const App = {
                     userAvatarEl.style.display = 'block';
                 }
             }
+
+            this.updateSyncStatus();
         } catch (error) {
             console.error('Error updating header:', error);
+        }
+    },
+
+    /**
+     * Update the "backed up X ago" indicator in the header.
+     */
+    updateSyncStatus() {
+        const el = document.getElementById('sync-status');
+        if (!el) return;
+
+        if (StorageManager.hasUnsyncedChanges()) {
+            el.textContent = '☁️ Not backed up yet';
+            el.title = "You have changes that haven't been synced to the cloud yet";
+            el.classList.add('sync-pending');
+            return;
+        }
+
+        el.classList.remove('sync-pending');
+        const cloudUpdatedAt = StorageManager.getCloudUpdatedAt();
+        if (cloudUpdatedAt) {
+            el.textContent = `☁️ Backed up ${Utils.timeAgo(cloudUpdatedAt)}`;
+            el.title = `Last backed up: ${new Date(cloudUpdatedAt).toLocaleString()}`;
+        } else {
+            el.textContent = '☁️ Never backed up';
+            el.title = "This device hasn't synced to the cloud yet";
+        }
+    },
+
+    /**
+     * Manually trigger an immediate upload to Supabase, bypassing the
+     * debounce. Failures are already surfaced by StorageManager itself.
+     */
+    async manualSync() {
+        const btn = document.getElementById('sync-now-btn');
+        if (btn) { btn.disabled = true; btn.classList.add('syncing'); }
+
+        try {
+            const success = await StorageManager.flushSyncNow();
+            if (success) Utils.showSuccess('Backed up to the cloud');
+        } finally {
+            if (btn) { btn.disabled = false; btn.classList.remove('syncing'); }
+            this.updateSyncStatus();
         }
     },
 

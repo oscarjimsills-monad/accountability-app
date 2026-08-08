@@ -156,11 +156,7 @@
     --commit-item-border:   transparent;
 
     /* --- Weekly Review Banner --- */
-    --weekly-review-bg:        linear-gradient(135deg, #1e40af, #3b82f6);
     --weekly-review-color:     #ffffff;
-    --weekly-review-btn-bg:    #ffffff;
-    --weekly-review-btn-color: #1e40af;
-    --weekly-review-btn-hover: #f0f4ff;
 
     /* --- Weekly Review History Card --- */
     --review-card-bg:     #f1f5f9;
@@ -350,11 +346,7 @@
     --commit-item-border:   #2a3f5a;
 
     /* --- Weekly Review Banner --- */
-    --weekly-review-bg:        linear-gradient(135deg, #0d1b2a, #1e2f45);
     --weekly-review-color:     #e8eaf0;
-    --weekly-review-btn-bg:    #c8a951;
-    --weekly-review-btn-color: #0d1b2a;
-    --weekly-review-btn-hover: #dbb85e;
 
     /* --- Weekly Review History Card --- */
     --review-card-bg:     #1e2f45;

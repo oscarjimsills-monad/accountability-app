@@ -2031,13 +2031,6 @@
     .app-edit-row .btn-icon     { justify-self: end; }
 }
 
-/* ─── Weekly Review Banner ────────────────────────────────────────────────── */
-.weekly-review-banner {
-    background: var(--weekly-review-bg);
-    border-radius: var(--radius);
-    padding: 1.25rem 1.5rem !important;
-}
-
 .weekly-review-prompt {
     display: flex;
     align-items: center;
@@ -2055,19 +2048,6 @@
 
 .weekly-review-text strong { font-size: 1.1rem; }
 .weekly-review-text span   { font-size: 0.9rem; opacity: 0.9; }
-
-.weekly-review-banner .btn-primary {
-    background: var(--weekly-review-btn-bg);
-    color: var(--weekly-review-btn-color);
-    border-color: var(--weekly-review-btn-bg);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.weekly-review-banner .btn-primary:hover {
-    background: var(--weekly-review-btn-hover);
-    border-color: var(--weekly-review-btn-hover);
-}
 
 /* Weekly goals */
 .weekly-goals-list { display: flex; flex-direction: column; gap: 0.5rem; }

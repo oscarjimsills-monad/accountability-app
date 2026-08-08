@@ -393,33 +393,6 @@ const CommitmentTracker = {
             && lastEveningCheckin >= yesterdayStr;
     },
 
-    needsWeeklyReview() {
-        return false; // Weekly review is now triggered manually from dashboard
-    },
-
-    checkAndSetPendingWeeklyReview() {
-        // On Sundays, mark the current week as pending review if not done yet
-        const logDateStr = Utils.getLogDateString();
-        const logDate = new Date(logDateStr + 'T12:00:00');
-        if (logDate.getDay() !== 0) return; // Only on Sunday
-
-        const thisWeekKey = this.getWeekKey(logDate);
-        const lastReview = StorageManager.getLastWeeklyReview();
-        if (lastReview === thisWeekKey) return; // Already reviewed
-
-        const pending = StorageManager.getPendingWeeklyReview();
-        if (!pending) {
-            StorageManager.savePendingWeeklyReview(thisWeekKey);
-        }
-    },
-
-    hasPendingWeeklyReview() {
-        const pending = StorageManager.getPendingWeeklyReview();
-        if (!pending) return false;
-        const lastReview = StorageManager.getLastWeeklyReview();
-        return lastReview !== pending;
-    },
-
     getPendingWeeklyReviewKey() {
         return StorageManager.getPendingWeeklyReview();
     },

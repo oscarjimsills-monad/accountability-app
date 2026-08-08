@@ -14,9 +14,6 @@ const Dashboard = {
             return;
         }
 
-        // Set pending weekly review if it's Sunday
-        CommitmentTracker.checkAndSetPendingWeeklyReview();
-
         const stats = this.getOverallStats();
         const commitmentStats = CommitmentTracker.getStats();
         const todayCommitment = CommitmentTracker.getTodayCommitment();
@@ -31,9 +28,6 @@ const Dashboard = {
 
                 <!-- Nightly Check-in Button (shown after 20:00 until completed) -->
                 ${this.renderNightlyCheckinButton()}
-
-                <!-- Weekly Review Button (shown when pending) -->
-                ${this.renderWeeklyReviewButton()}
 
                 <!-- This Week's Goals -->
                 ${this.renderWeeklyGoalsSection()}
@@ -150,23 +144,6 @@ const Dashboard = {
                     </div>
                     <button class="btn btn-primary" onclick="App.startEveningCheckin()">
                         Start Check-in →
-                    </button>
-                </div>
-            </div>
-        `;
-    },
-
-    renderWeeklyReviewButton() {
-        if (!CommitmentTracker.hasPendingWeeklyReview()) return '';
-        return `
-            <div class="dashboard-section weekly-review-banner">
-                <div class="weekly-review-prompt">
-                    <div class="weekly-review-text">
-                        <strong>📋 Weekly Review Due</strong>
-                        <span>Take a few minutes to review your week and set goals for the next one.</span>
-                    </div>
-                    <button class="btn btn-primary" onclick="PromptFlow.startWeeklyReview()">
-                        Start Weekly Review →
                     </button>
                 </div>
             </div>

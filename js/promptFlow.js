@@ -65,14 +65,6 @@ const PromptFlow = {
         this.renderStep();
     },
 
-    startWeeklyReview() {
-        this.currentFlow = 'weekly';
-        this.currentStep = 0;
-        this.flowData = {};
-        this.showPromptContainer();
-        this.renderStep();
-    },
-
     /**
      * Start evening commitment flow
      */

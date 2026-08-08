@@ -132,6 +132,12 @@ body {
     color: var(--warning-color);
 }
 
+.sync-modal-status {
+    color: var(--text-secondary);
+    line-height: 1.5;
+    margin: 0;
+}
+
 .sync-now-btn {
     background: none;
     border: none;

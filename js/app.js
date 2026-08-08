@@ -175,9 +175,26 @@ const App = {
         // Flush any pending debounced Supabase sync immediately when the tab
         // is hidden/closed — otherwise edits made in the last couple of
         // seconds before closing never make it to the cloud.
+        //
+        // The reverse case matters just as much: iOS (and other mobile
+        // browsers) commonly *freeze* a backgrounded tab/home-screen app
+        // instead of killing it. Every manager (TaskManager, HabitManager,
+        // etc.) keeps its data as a long-lived in-memory array loaded once
+        // at startup, mutated in place, and written back as a full
+        // overwrite on every save. If this instance gets frozen and later
+        // resumed without a real page reload, its in-memory arrays are
+        // still whatever they were at freeze time — even though the
+        // *shared* localStorage (and Supabase) may have moved on since,
+        // e.g. edited from another tab/device. The very next save from the
+        // resumed instance would then silently overwrite localStorage, and
+        // then Supabase, with that stale in-memory copy. Re-pulling and
+        // reloading every manager's in-memory state on resume closes that
+        // hole before the user can touch anything.
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'hidden') {
                 StorageManager.flushSyncNow();
+            } else if (document.visibilityState === 'visible') {
+                this.resyncOnResume();
             }
         });
     },
@@ -1723,44 +1740,134 @@ const App = {
     },
 
     /**
-     * Update the "backed up X ago" indicator in the header.
+     * Compute the current backup status once, shared by the header chip
+     * and the backup modal so they can never disagree.
      */
-    updateSyncStatus() {
-        const el = document.getElementById('sync-status');
-        if (!el) return;
-
+    _syncStatusInfo() {
         if (StorageManager.hasUnsyncedChanges()) {
-            el.textContent = '☁️ Not backed up yet';
-            el.title = "You have changes that haven't been synced to the cloud yet";
-            el.classList.add('sync-pending');
-            return;
+            return {
+                chip: 'Not backed up yet',
+                detail: "You have changes that haven't been synced to the cloud yet.",
+                pending: true
+            };
         }
-
-        el.classList.remove('sync-pending');
         const cloudUpdatedAt = StorageManager.getCloudUpdatedAt();
         if (cloudUpdatedAt) {
-            el.textContent = `☁️ Backed up ${Utils.timeAgo(cloudUpdatedAt)}`;
-            el.title = `Last backed up: ${new Date(cloudUpdatedAt).toLocaleString()}`;
-        } else {
-            el.textContent = '☁️ Never backed up';
-            el.title = "This device hasn't synced to the cloud yet";
+            return {
+                chip: `Backed up ${Utils.timeAgo(cloudUpdatedAt)}`,
+                detail: `Last backed up: ${new Date(cloudUpdatedAt).toLocaleString()}`,
+                pending: false
+            };
+        }
+        return {
+            chip: 'Never backed up',
+            detail: "This device hasn't synced to the cloud yet.",
+            pending: false
+        };
+    },
+
+    /**
+     * Update the "backed up X ago" indicator in the header (hidden on
+     * narrow/mobile screens — see the backup modal for the mobile
+     * equivalent) and, if it's open, the backup modal's status line too.
+     */
+    updateSyncStatus() {
+        const info = this._syncStatusInfo();
+
+        const chipEl = document.getElementById('sync-status');
+        if (chipEl) {
+            chipEl.textContent = `☁️ ${info.chip}`;
+            chipEl.title = info.detail;
+            chipEl.classList.toggle('sync-pending', info.pending);
+        }
+
+        const modalStatusEl = document.getElementById('sync-modal-status');
+        if (modalStatusEl) modalStatusEl.textContent = info.detail;
+    },
+
+    /**
+     * Show the backup modal — how long ago the last confirmed backup was,
+     * with a button to force one now. Used on every screen size: tapping
+     * the header's sync icon opens this rather than syncing immediately,
+     * since a lone icon button gives no way to see the status on narrow
+     * screens (where the inline header text is hidden to avoid overflow).
+     */
+    showSyncModal() {
+        const modal = document.getElementById('modal-container');
+        const info = this._syncStatusInfo();
+
+        modal.innerHTML = `
+            <div class="modal-overlay" onclick="App.closeModal()">
+                <div class="modal-content" onclick="event.stopPropagation()">
+                    <div class="modal-header">
+                        <h2>☁️ Cloud Backup</h2>
+                        <button class="btn-close" onclick="App.closeModal()">✕</button>
+                    </div>
+                    <div class="modal-body">
+                        <p id="sync-modal-status" class="sync-modal-status">${Utils.escapeHtml(info.detail)}</p>
+                        <div class="modal-actions">
+                            <button class="btn btn-secondary" onclick="App.closeModal()">Close</button>
+                            <button id="sync-modal-backup-btn" class="btn btn-primary" onclick="App.manualSync()">🔄 Back up now</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        modal.style.display = 'flex';
+    },
+
+    /**
+     * Re-pull from Supabase and reload every manager's in-memory state.
+     * Called when the tab/PWA regains visibility — see the visibilitychange
+     * listener in setupEventListeners() for why this matters.
+     */
+    async resyncOnResume() {
+        try {
+            await StorageManager.loadFromSupabase();
+            TaskManager.init(); // loadTasks() + the task->obligation backfill
+            HabitManager.loadHabits();
+            GoalManager.loadGoals();
+            ShoppingListManager.loadItems();
+            TimeTracker.loadTimeEntries();
+            ScreentimeTracker.loadEntries();
+            ReflectionManager.loadReflections();
+            this.updateSyncStatus();
+            this.refreshCurrentView();
+        } catch (error) {
+            console.error('Error resyncing on resume:', error);
         }
     },
 
     /**
      * Manually trigger an immediate upload to Supabase, bypassing the
-     * debounce. Failures are already surfaced by StorageManager itself.
+     * debounce. success here means StorageManager actually read the write
+     * back from Supabase and confirmed it — not just that the request
+     * didn't throw — so "Backed up to the cloud" is only ever shown once
+     * that's true. On failure, StorageManager's own toast already explains
+     * why; this also updates the modal (if open) so the failure is visible
+     * there too, not just in a toast that's easy to miss.
      */
     async manualSync() {
-        const btn = document.getElementById('sync-now-btn');
-        if (btn) { btn.disabled = true; btn.classList.add('syncing'); }
+        const headerBtn = document.getElementById('sync-now-btn');
+        const modalBtn = document.getElementById('sync-modal-backup-btn');
+        const modalStatusEl = document.getElementById('sync-modal-status');
+
+        if (headerBtn) { headerBtn.disabled = true; headerBtn.classList.add('syncing'); }
+        if (modalBtn) { modalBtn.disabled = true; modalBtn.textContent = '🔄 Backing up…'; }
+        if (modalStatusEl) modalStatusEl.textContent = 'Backing up…';
 
         try {
             const success = await StorageManager.flushSyncNow();
-            if (success) Utils.showSuccess('Backed up to the cloud');
+            this.updateSyncStatus(); // refresh the header chip + baseline modal text from real state
+            if (success) {
+                Utils.showSuccess('Backed up to the cloud');
+            } else if (modalStatusEl) {
+                // More specific/reassuring than the generic "not backed up yet" text
+                modalStatusEl.textContent = 'Backup failed — your changes are still safe on this device and will retry automatically.';
+            }
         } finally {
-            if (btn) { btn.disabled = false; btn.classList.remove('syncing'); }
-            this.updateSyncStatus();
+            if (headerBtn) { headerBtn.disabled = false; headerBtn.classList.remove('syncing'); }
+            if (modalBtn) { modalBtn.disabled = false; modalBtn.textContent = '🔄 Back up now'; }
         }
     },
 

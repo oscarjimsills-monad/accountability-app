@@ -107,8 +107,12 @@ const StorageManager = {
 
     /**
      * Push all localStorage data to Supabase for the current user.
-     * Returns true only on a confirmed successful push — callers rely on
-     * this to know whether it's now safe to treat the cloud as up to date.
+     * Returns true only once the write is actually confirmed present in
+     * Supabase (see _verifyCloudWrite) — an upsert call resolving without
+     * a client-side error is not treated as proof on its own. Callers rely
+     * on this return value to know whether it's now safe to treat the
+     * cloud as up to date, and the manual sync button relies on it to
+     * decide whether to tell the user their data is really backed up.
      */
     async syncToSupabase() {
         try {
@@ -140,6 +144,13 @@ const StorageManager = {
                 return false;
             }
 
+            const confirmed = await this._verifyCloudWrite(user.id, now);
+            if (!confirmed) {
+                console.error('Supabase sync error: write could not be verified on read-back');
+                this._warnSyncFailure();
+                return false;
+            }
+
             localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, now);
             localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, now);
             this._syncFailureWarned = false;
@@ -147,6 +158,26 @@ const StorageManager = {
         } catch (error) {
             console.error('Supabase sync error:', error);
             this._warnSyncFailure();
+            return false;
+        }
+    },
+
+    /**
+     * Read the row back after a push and confirm Supabase actually has the
+     * exact timestamp we just wrote. An upsert resolving with no error
+     * isn't proof enough on its own — this is the actual confirmation.
+     */
+    async _verifyCloudWrite(userId, expectedUpdatedAt) {
+        try {
+            const { data, error } = await SupabaseClient
+                .from('user_data')
+                .select('updated_at')
+                .eq('user_id', userId)
+                .single();
+            if (error || !data) return false;
+            return data.updated_at === expectedUpdatedAt;
+        } catch (error) {
+            console.error('Supabase verify error:', error);
             return false;
         }
     },

@@ -1862,8 +1862,10 @@ const App = {
             if (success) {
                 Utils.showSuccess('Backed up to the cloud');
             } else if (modalStatusEl) {
-                // More specific/reassuring than the generic "not backed up yet" text
-                modalStatusEl.textContent = 'Backup failed — your changes are still safe on this device and will retry automatically.';
+                // Show the actual reason, not just "failed, try again" — more
+                // specific/reassuring than the generic "not backed up yet" text too
+                const reason = StorageManager.getLastSyncFailureReason();
+                modalStatusEl.textContent = `Backup failed${reason ? ': ' + reason : ''} — your changes are still safe on this device and will retry automatically.`;
             }
         } finally {
             if (headerBtn) { headerBtn.disabled = false; headerBtn.classList.remove('syncing'); }

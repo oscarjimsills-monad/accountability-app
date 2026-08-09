@@ -43,6 +43,10 @@ const StorageManager = {
     // Set once a sync failure has been surfaced to the user, so a long
     // offline stretch doesn't spam a toast on every debounced retry
     _syncFailureWarned: false,
+    // The specific reason the last sync failed, so the backup modal can
+    // show something more useful than a generic "failed, try again" —
+    // kept even after the toast itself has been suppressed by the gate above.
+    _lastSyncFailureReason: null,
 
     /**
      * Save data to localStorage, then schedule a background Supabase sync
@@ -140,32 +144,42 @@ const StorageManager = {
 
             if (error) {
                 console.error('Supabase sync error:', error);
-                this._warnSyncFailure();
+                this._warnSyncFailure(error.message || `Supabase rejected the write (${error.code || 'unknown error'})`);
                 return false;
             }
 
             const confirmed = await this._verifyCloudWrite(user.id, now);
             if (!confirmed) {
                 console.error('Supabase sync error: write could not be verified on read-back');
-                this._warnSyncFailure();
+                this._warnSyncFailure("Upload was sent but couldn't be confirmed on read-back");
                 return false;
             }
 
             localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, now);
             localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, now);
             this._syncFailureWarned = false;
+            this._lastSyncFailureReason = null;
             return true;
         } catch (error) {
             console.error('Supabase sync error:', error);
-            this._warnSyncFailure();
+            this._warnSyncFailure(error.message || 'Unexpected error contacting Supabase');
             return false;
         }
     },
 
     /**
      * Read the row back after a push and confirm Supabase actually has the
-     * exact timestamp we just wrote. An upsert resolving with no error
-     * isn't proof enough on its own — this is the actual confirmation.
+     * timestamp we just wrote. An upsert resolving with no error isn't
+     * proof enough on its own — this is the actual confirmation.
+     *
+     * Compares parsed instants, not raw strings: Postgres/PostgREST echoes
+     * timestamps back as e.g. "2026-08-06T11:21:20.804+00:00", while
+     * JS's toISOString() (what we send) always uses "...804Z" — the exact
+     * same instant, different string. A strict string comparison here
+     * would fail on literally every sync, which is exactly what happened
+     * when this first shipped: every manual backup reported failure even
+     * though the underlying write succeeded (data was still reaching
+     * other devices via the same upsert).
      */
     async _verifyCloudWrite(userId, expectedUpdatedAt) {
         try {
@@ -174,8 +188,8 @@ const StorageManager = {
                 .select('updated_at')
                 .eq('user_id', userId)
                 .single();
-            if (error || !data) return false;
-            return data.updated_at === expectedUpdatedAt;
+            if (error || !data?.updated_at) return false;
+            return new Date(data.updated_at).getTime() === new Date(expectedUpdatedAt).getTime();
         } catch (error) {
             console.error('Supabase verify error:', error);
             return false;
@@ -185,14 +199,26 @@ const StorageManager = {
     /**
      * Surface a sync failure to the user instead of only logging it —
      * silent failures here are exactly what let 3 days of check-ins get
-     * lost to a stale cloud pull. Only warns once per offline/failure
-     * stretch (reset on the next successful sync) so a long outage doesn't
-     * spam a toast on every debounced retry.
+     * lost to a stale cloud pull. The specific reason is always recorded
+     * (for the backup modal to show even on a repeat failure), but the
+     * toast itself only fires once per offline/failure stretch — reset on
+     * the next successful sync — so a long outage doesn't spam a toast on
+     * every debounced retry.
      */
-    _warnSyncFailure() {
+    _warnSyncFailure(reason) {
+        this._lastSyncFailureReason = reason || null;
         if (this._syncFailureWarned) return;
         this._syncFailureWarned = true;
-        Utils.showError("Couldn't sync to the cloud — your changes are saved on this device and will sync once you're back online.");
+        const suffix = reason ? ` — ${reason}` : '';
+        Utils.showError(`Couldn't back up to the cloud${suffix}. Your changes are saved on this device and will retry automatically.`, 5000);
+    },
+
+    /**
+     * The specific reason the last sync attempt failed, if any — shown in
+     * the backup modal so a failure means something more than "try again".
+     */
+    getLastSyncFailureReason() {
+        return this._lastSyncFailureReason;
     },
 
     /**

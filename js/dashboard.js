@@ -678,9 +678,13 @@ const Dashboard = {
         const wakeupStreak = CommitmentTracker.calculateWakeupStreak();
         const screentimeGoal = StorageManager.getSettings().screentimeGoalMinutes || 90;
         const screentimeStreak = ScreentimeTracker.getStreak(screentimeGoal);
-        const activeHabits = HabitManager.getActiveHabits();
-        
-        // Get ALL habits with their streaks, sorted by current streak
+        // Paused habits are deliberately not being tracked right now, so a
+        // frozen streak (often 0) sitting on the dashboard is just noise —
+        // exclude them here (they still show, clearly labeled, in their own
+        // section on the Habits page).
+        const activeHabits = HabitManager.getActiveHabits().filter(h => !HabitManager.isPaused(h));
+
+        // Get ALL non-paused habits with their streaks, sorted by current streak
         const habitStreaks = activeHabits
             .map(habit => ({
                 ...habit,

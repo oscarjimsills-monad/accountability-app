@@ -981,11 +981,11 @@ const PromptFlow = {
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="wt-hours">Hours</label>
-                                        <input type="number" id="wt-hours" class="input-number" min="0" max="24" value="0">
+                                        <input type="number" id="wt-hours" class="input-number" min="0" max="24">
                                     </div>
                                     <div class="form-group">
                                         <label for="wt-minutes">Minutes</label>
-                                        <input type="number" id="wt-minutes" class="input-number" min="0" max="59" value="30">
+                                        <input type="number" id="wt-minutes" class="input-number" min="0" max="59">
                                     </div>
                                 </div>
 
@@ -1032,11 +1032,11 @@ const PromptFlow = {
                                 <div class="form-row">
                                     <div class="form-group">
                                         <label for="wt-skip-hours">Hours</label>
-                                        <input type="number" id="wt-skip-hours" class="input-number" min="0" max="24" value="0">
+                                        <input type="number" id="wt-skip-hours" class="input-number" min="0" max="24">
                                     </div>
                                     <div class="form-group">
                                         <label for="wt-skip-minutes">Minutes</label>
-                                        <input type="number" id="wt-skip-minutes" class="input-number" min="0" max="59" value="30">
+                                        <input type="number" id="wt-skip-minutes" class="input-number" min="0" max="59">
                                     </div>
                                 </div>
 

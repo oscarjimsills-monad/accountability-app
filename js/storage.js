@@ -242,59 +242,73 @@ const StorageManager = {
     },
 
     /**
-     * Pull data from Supabase and write it into localStorage.
-     * Called once on app load.
+     * Reconcile this device with Supabase by comparing timestamps directly
+     * — never by trusting a local "have I synced" flag. That flag (the old
+     * hasUnsyncedChanges() approach) can go stale: a device that goes
+     * dormant right as its last sync attempt was starting (closing the lid,
+     * losing signal) would keep that flag set to "unsynced" indefinitely.
+     * Days later, on resume, it would blindly re-push that old local
+     * snapshot — with zero awareness that the cloud had since moved on
+     * from other devices in the meantime, silently clobbering it. This is
+     * exactly what was happening: an old dormant laptop tab, reopened,
+     * would win a race it had no business winning.
      *
-     * Cloud is only trusted as source of truth when this device has no
-     * unsynced local edits. If it does (e.g. this device was offline and
-     * kept logging locally), a stale cloud snapshot must never clobber
-     * that — instead we push local up first, and only overwrite local
-     * data if that push actually succeeds. This is what silently failed
-     * before: the old version always overwrote local with the cloud copy
-     * on load, so a run of failed background syncs (offline, expired
-     * session, etc.) meant the next reload permanently wiped every local
-     * change made since the last successful sync.
+     * Instead: always ask Supabase what it actually has right now, and
+     * compare that against this device's own latest local edit timestamp.
+     * Whichever is newer wins.
+     *
+     * Returns one of:
+     *   'pull'    — the cloud was newer; local data has been overwritten
+     *               with it. The caller MUST treat any already-loaded
+     *               in-memory state as stale (a page reload is the
+     *               simplest way — seeApp.resyncOnResume()).
+     *   'push'    — local was newer (or the cloud had no row yet); it has
+     *               been pushed up.
+     *   'in-sync' — nothing to do.
+     *   'error'   — couldn't reach Supabase; local data left untouched.
      */
     async loadFromSupabase() {
         try {
-            if (!window.AuthManager?.isAuthenticated()) return false;
-
-            if (this.hasUnsyncedChanges()) {
-                // syncToSupabase() already warns the user on failure.
-                const pushed = await this.syncToSupabase();
-                // Whether it succeeded or not, local data must not be overwritten:
-                // on success it already matches the cloud; on failure the cloud
-                // snapshot is stale and must not clobber what's on this device.
-                return pushed;
-            }
-
+            if (!window.AuthManager?.isAuthenticated()) return 'error';
             const user = AuthManager.getUser();
+
             const { data, error } = await SupabaseClient
                 .from('user_data')
                 .select('data, updated_at')
                 .eq('user_id', user.id)
                 .single();
 
-            // PGRST116 = no row yet (first login) — that's fine
+            // PGRST116 = no row yet (first login) — that's fine, treat as "cloud has nothing"
             if (error && error.code !== 'PGRST116') {
                 console.error('Supabase load error:', error);
-                return false;
+                return 'error';
             }
 
-            if (data?.data) {
-                Object.entries(data.data).forEach(([key, value]) => {
-                    localStorage.setItem(key, JSON.stringify(value));
-                });
+            const cloudUpdatedAt = data?.updated_at || null;
+            const localLatestEdit = localStorage.getItem(SYNC_META_KEYS.LAST_EDIT_AT);
+            const cloudMs = cloudUpdatedAt ? new Date(cloudUpdatedAt).getTime() : -Infinity;
+            const localMs = localLatestEdit ? new Date(localLatestEdit).getTime() : -Infinity;
+
+            if (cloudMs > localMs) {
+                if (data?.data) {
+                    Object.entries(data.data).forEach(([key, value]) => {
+                        localStorage.setItem(key, JSON.stringify(value));
+                    });
+                }
+                localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
+                localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, cloudUpdatedAt);
+                return 'pull';
             }
 
-            localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
-            if (data?.updated_at) {
-                localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, data.updated_at);
+            if (localMs > cloudMs) {
+                const pushed = await this.syncToSupabase();
+                return pushed ? 'push' : 'error';
             }
-            return true;
+
+            return 'in-sync';
         } catch (error) {
             console.error('Supabase load error:', error);
-            return false;
+            return 'error';
         }
     },
 

@@ -1817,25 +1817,54 @@ const App = {
     },
 
     /**
-     * Re-pull from Supabase and reload every manager's in-memory state.
-     * Called when the tab/PWA regains visibility — see the visibilitychange
-     * listener in setupEventListeners() for why this matters.
+     * Reconcile with Supabase. Called when the tab/PWA regains visibility —
+     * see the visibilitychange listener in setupEventListeners() for why
+     * this matters.
+     *
+     * If the cloud turns out to be newer, StorageManager.loadFromSupabase()
+     * has already overwritten localStorage with it — but every manager
+     * (TaskManager, HabitManager, etc.) is still holding whatever it had
+     * in memory before that, since JS objects don't auto-refresh from
+     * localStorage. Rather than manually reloading each manager one by one
+     * (fragile — easy to add a new manager later and forget it here), just
+     * reload the whole page: it's simple, and it's exactly what this app
+     * already does on every normal open anyway.
      */
     async resyncOnResume() {
         try {
-            await StorageManager.loadFromSupabase();
-            TaskManager.init(); // loadTasks() + the task->obligation backfill
-            HabitManager.loadHabits();
-            GoalManager.loadGoals();
-            ShoppingListManager.loadItems();
-            TimeTracker.loadTimeEntries();
-            ScreentimeTracker.loadEntries();
-            ReflectionManager.loadReflections();
+            const result = await StorageManager.loadFromSupabase();
+            if (result === 'pull') {
+                this.showReloadForNewerDataModal();
+                return; // a reload is coming — don't touch anything else
+            }
             this.updateSyncStatus();
-            this.refreshCurrentView();
         } catch (error) {
             console.error('Error resyncing on resume:', error);
         }
+    },
+
+    /**
+     * Tell the user a newer backup was found elsewhere and this page is
+     * about to reload to pick it up. Non-dismissable on purpose — the
+     * whole point is to stop them acting on data that's about to be
+     * replaced.
+     */
+    showReloadForNewerDataModal() {
+        const modal = document.getElementById('modal-container');
+        modal.innerHTML = `
+            <div class="modal-overlay">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h2>☁️ Newer Backup Found</h2>
+                    </div>
+                    <div class="modal-body">
+                        <p>A newer version of your data was saved from another device. This page will reload in a few seconds to load it.</p>
+                    </div>
+                </div>
+            </div>
+        `;
+        modal.style.display = 'flex';
+        setTimeout(() => window.location.reload(), 5000);
     },
 
     /**

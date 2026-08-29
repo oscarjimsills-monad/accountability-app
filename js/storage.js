@@ -29,13 +29,31 @@ const STORAGE_KEYS = {
 const SYNC_META_KEYS = {
     LAST_EDIT_AT: 'accountability_lastLocalEditAt',
     LAST_SYNCED_AT: 'accountability_lastSyncedAt',
-    // The cloud row's own `updated_at` as of the last time we confirmed it —
-    // set from the real column value on a pull, or from the timestamp we
-    // just wrote on a successful push. This is what's shown to the user as
-    // "backed up X ago"; left untouched on a failed push, since the cloud
-    // genuinely wasn't updated then.
-    CLOUD_UPDATED_AT: 'accountability_cloudUpdatedAt'
+    // The cloud row's own `updated_at` as of the last time *this device*
+    // confirmed it — set from the real column value on a pull, or from the
+    // timestamp we just wrote on a successful push. This is the correct
+    // reference point for "has the cloud moved since I last checked", and
+    // is what's shown to the user as "backed up X ago". Left untouched on
+    // a failed push, since the cloud genuinely wasn't updated then.
+    CLOUD_UPDATED_AT: 'accountability_cloudUpdatedAt',
+    // A random ID identifying this browser/storage partition (not physical
+    // hardware — two tabs of the same browser share one, a different
+    // browser/profile on the same machine gets its own, same as it would
+    // get its own separate localStorage). Generated once and persisted;
+    // not currently used to gate any decision, just captured for possible
+    // future use (e.g. showing "last backed up from iPhone" in the UI).
+    DEVICE_ID: 'accountability_deviceId',
+    // Which device (by the marker above) made the cloud's current state,
+    // as of the last time this device checked — read back from the cloud
+    // payload's embedded marker on a pull, or set to our own ID on a push.
+    LAST_UPDATED_BY_DEVICE: 'accountability_lastUpdatedByDevice'
 };
+
+// Marker key embedded inside the synced `data` blob (not a real
+// STORAGE_KEYS entry) identifying which device most recently pushed it.
+// Deliberately not part of STORAGE_KEYS so it isn't treated as app data;
+// handled separately on push/pull instead.
+const CLOUD_DEVICE_MARKER = '__deviceId';
 
 const StorageManager = {
     // Debounce timer for Supabase sync
@@ -47,6 +65,39 @@ const StorageManager = {
     // show something more useful than a generic "failed, try again" —
     // kept even after the toast itself has been suppressed by the gate above.
     _lastSyncFailureReason: null,
+
+    /**
+     * A random ID identifying this browser/storage partition, generated
+     * once and persisted forever. Not real device fingerprinting — just a
+     * friendly label (coarse platform guess + random suffix) so a future
+     * feature could show e.g. "last backed up from iPhone-a3f9e1" without
+     * needing anything more invasive than that.
+     */
+    getDeviceId() {
+        let id = localStorage.getItem(SYNC_META_KEYS.DEVICE_ID);
+        if (!id) {
+            const ua = navigator.userAgent || '';
+            const platform = navigator.platform || '';
+            let label = 'Device';
+            if (/iPad/.test(ua)) label = 'iPad';
+            else if (/iPhone/.test(ua)) label = 'iPhone';
+            else if (/Android/.test(ua)) label = 'Android';
+            else if (/Mac/.test(platform)) label = 'Mac';
+            else if (/Win/.test(platform)) label = 'Windows';
+            else if (/Linux/.test(platform)) label = 'Linux';
+            id = `${label}-${Utils.generateId().slice(-6)}`;
+            localStorage.setItem(SYNC_META_KEYS.DEVICE_ID, id);
+        }
+        return id;
+    },
+
+    /**
+     * Which device made the cloud's current state, as of the last time
+     * this device checked. Null if never synced.
+     */
+    getLastUpdatedByDevice() {
+        return localStorage.getItem(SYNC_META_KEYS.LAST_UPDATED_BY_DEVICE);
+    },
 
     /**
      * Save data to localStorage, then schedule a background Supabase sync
@@ -132,6 +183,7 @@ const StorageManager = {
                     catch (e) { data[key] = raw; }
                 }
             });
+            data[CLOUD_DEVICE_MARKER] = this.getDeviceId();
 
             const now = new Date().toISOString();
             const { error } = await SupabaseClient
@@ -157,6 +209,7 @@ const StorageManager = {
 
             localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, now);
             localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, now);
+            localStorage.setItem(SYNC_META_KEYS.LAST_UPDATED_BY_DEVICE, this.getDeviceId());
             this._syncFailureWarned = false;
             this._lastSyncFailureReason = null;
             return true;
@@ -243,27 +296,40 @@ const StorageManager = {
 
     /**
      * Reconcile this device with Supabase by comparing timestamps directly
-     * — never by trusting a local "have I synced" flag. That flag (the old
-     * hasUnsyncedChanges() approach) can go stale: a device that goes
-     * dormant right as its last sync attempt was starting (closing the lid,
-     * losing signal) would keep that flag set to "unsynced" indefinitely.
-     * Days later, on resume, it would blindly re-push that old local
-     * snapshot — with zero awareness that the cloud had since moved on
-     * from other devices in the meantime, silently clobbering it. This is
-     * exactly what was happening: an old dormant laptop tab, reopened,
-     * would win a race it had no business winning.
+     * — never by trusting a local "have I synced" flag on its own, and
+     * never by comparing against when a local *edit* happened.
      *
-     * Instead: always ask Supabase what it actually has right now, and
-     * compare that against this device's own latest local edit timestamp.
-     * Whichever is newer wins.
+     * The correct reference point for "has the cloud moved since I last
+     * checked" is CLOUD_UPDATED_AT — the cloud timestamp *this device*
+     * last confirmed — not LAST_EDIT_AT (when a local edit happened).
+     * Using LAST_EDIT_AT was a real bug: an edit always completes
+     * *before* its own push finishes, so right after literally any
+     * successful sync, the cloud's updated_at is trivially newer than
+     * that edit's own timestamp — on the very same device. That made
+     * every single sync look like "the cloud has something newer than
+     * me", forcing a reload on every app resume even seconds after
+     * backgrounding it. CLOUD_UPDATED_AT doesn't have this problem: a
+     * successful push updates it immediately to match the cloud, so a
+     * same-device round trip correctly sees "cloud === what I already
+     * knew" and does nothing.
+     *
+     * This also still catches the original bug this replaced: a device
+     * that goes dormant right as its last sync attempt was starting
+     * (closing the lid, losing signal) has an old CLOUD_UPDATED_AT: the
+     * cloud has since moved past it via a different device, so the
+     * comparison below correctly triggers a pull instead of letting a
+     * revived dormant tab blindly re-push its stale snapshot over
+     * newer data — no separate "is this a different device" check needed,
+     * since that's exactly what "cloud moved past what I last knew"
+     * already means, regardless of which device caused it.
      *
      * Returns one of:
      *   'pull'    — the cloud was newer; local data has been overwritten
      *               with it. The caller MUST treat any already-loaded
      *               in-memory state as stale (a page reload is the
-     *               simplest way — seeApp.resyncOnResume()).
-     *   'push'    — local was newer (or the cloud had no row yet); it has
-     *               been pushed up.
+     *               simplest way — see App.resyncOnResume()).
+     *   'push'    — this device has an edit unconfirmed against the
+     *               (unchanged) cloud; it has been pushed up.
      *   'in-sync' — nothing to do.
      *   'error'   — couldn't reach Supabase; local data left untouched.
      */
@@ -285,22 +351,29 @@ const StorageManager = {
             }
 
             const cloudUpdatedAt = data?.updated_at || null;
-            const localLatestEdit = localStorage.getItem(SYNC_META_KEYS.LAST_EDIT_AT);
+            const myLastKnownCloudUpdatedAt = localStorage.getItem(SYNC_META_KEYS.CLOUD_UPDATED_AT);
             const cloudMs = cloudUpdatedAt ? new Date(cloudUpdatedAt).getTime() : -Infinity;
-            const localMs = localLatestEdit ? new Date(localLatestEdit).getTime() : -Infinity;
+            const knownMs = myLastKnownCloudUpdatedAt ? new Date(myLastKnownCloudUpdatedAt).getTime() : -Infinity;
 
-            if (cloudMs > localMs) {
+            if (cloudMs > knownMs) {
+                // Cloud has moved beyond what this device last confirmed —
+                // pull it down, whatever caused the move.
+                const cloudDeviceId = data?.data?.[CLOUD_DEVICE_MARKER] || null;
                 if (data?.data) {
                     Object.entries(data.data).forEach(([key, value]) => {
+                        if (key === CLOUD_DEVICE_MARKER) return; // not real app data — handled separately below
                         localStorage.setItem(key, JSON.stringify(value));
                     });
                 }
                 localStorage.setItem(SYNC_META_KEYS.LAST_SYNCED_AT, new Date().toISOString());
                 localStorage.setItem(SYNC_META_KEYS.CLOUD_UPDATED_AT, cloudUpdatedAt);
+                if (cloudDeviceId) localStorage.setItem(SYNC_META_KEYS.LAST_UPDATED_BY_DEVICE, cloudDeviceId);
                 return 'pull';
             }
 
-            if (localMs > cloudMs) {
+            if (this.hasUnsyncedChanges()) {
+                // Cloud hasn't moved beyond what we knew, but this device
+                // has an edit it hasn't confirmed syncing yet — push it.
                 const pushed = await this.syncToSupabase();
                 return pushed ? 'push' : 'error';
             }

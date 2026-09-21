@@ -125,7 +125,8 @@ const ScreentimeTracker = {
                 lowest: 0,
                 trend: 'no_data',
                 daysLogged: 0,
-                totalDays: days
+                totalDays: days,
+                entries: []
             };
         }
 

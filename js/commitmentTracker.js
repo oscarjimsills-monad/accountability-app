@@ -218,7 +218,7 @@ const CommitmentTracker = {
             }
 
             // Step expectedDate back one day
-            const d = new Date(expectedDate);
+            const d = new Date(expectedDate + 'T12:00:00');
             d.setDate(d.getDate() - 1);
             expectedDate = Utils.getDateString(d);
         }
@@ -310,7 +310,7 @@ const CommitmentTracker = {
      */
     calculateWeeklyScore(endDate = Utils.getLogDateString()) {
         const allCommitments = StorageManager.getAllCommitments();
-        const end = new Date(endDate);
+        const end = new Date(endDate + 'T12:00:00'); // noon-anchored: a bare date parses as UTC midnight
         const start = new Date(end);
         start.setDate(start.getDate() - 6); // Last 7 days
         
@@ -406,11 +406,89 @@ const CommitmentTracker = {
         return Utils.getDateString(d);
     },
 
-    completeWeeklyReview() {
-        const pending = StorageManager.getPendingWeeklyReview();
-        const weekKey = pending || this.getWeekKey();
+    /**
+     * Monday date string of the week `weeks` weeks after (or before, if
+     * negative) the given week.
+     */
+    shiftWeekKey(weekKey, weeks) {
+        const d = new Date(weekKey + 'T12:00:00');
+        d.setDate(d.getDate() + weeks * 7);
+        return Utils.getDateString(d);
+    },
+
+    /**
+     * The goals for a given week. They're set at the previous Sunday's
+     * review ("next week's goals"), so they're stored on that earlier
+     * review — storeKey is the key they live under, which callers need to
+     * update them in place. Each goal is { title, completed, status?, note? }
+     * where status is 'done' | 'partial' | 'missed' once judged at the review.
+     */
+    getGoalsForWeek(weekKey) {
+        const storeKey = this.shiftWeekKey(weekKey, -1);
+        const review = StorageManager.getWeeklyReviews()[storeKey];
+        return { storeKey, goals: review?.goals || [] };
+    },
+
+    /**
+     * Add a goal to a week mid-week. If the Sunday review that would normally
+     * hold the week's goals doesn't exist (first week using the app, or a
+     * skipped review), a goals-only entry is created — it has no completedAt,
+     * which everything treats as "this week hasn't been reviewed".
+     */
+    addGoalForWeek(weekKey, title) {
+        const storeKey = this.shiftWeekKey(weekKey, -1);
+        const review = StorageManager.getWeeklyReviews()[storeKey]
+            || { weekKey: storeKey, completedAt: null, goals: [], wins: '', struggles: '' };
+        review.goals = [...(review.goals || []), { title, completed: false }];
+        StorageManager.saveWeeklyReview(storeKey, review);
+    },
+
+    completeWeeklyReview(weekKey) {
         StorageManager.saveLastWeeklyReview(weekKey);
         StorageManager.clearPendingWeeklyReview();
+    },
+
+    /**
+     * Which week (Monday date string) a review belongs to, derived from when
+     * it was completed: the week ending on the latest Sunday on or before
+     * the completion's log day. A review done late on Sunday night (or in
+     * the following days as a catch-up) is about the week just ended.
+     */
+    getReviewedWeekKey(completedAtIso) {
+        const done = new Date(completedAtIso);
+        // 5am day boundary: finishing at 00:30 still counts as the previous log day
+        if (done.getHours() < 5) done.setDate(done.getDate() - 1);
+        const sunday = new Date(done.getFullYear(), done.getMonth(), done.getDate(), 12);
+        sunday.setDate(sunday.getDate() - sunday.getDay()); // getDay() is 0 on a Sunday
+        const monday = new Date(sunday);
+        monday.setDate(sunday.getDate() - 6);
+        return Utils.getDateString(monday);
+    },
+
+    /**
+     * Repair reviews filed under the wrong week. The weekly flow used to
+     * reuse any leftover "pending week" marker rather than the week actually
+     * being reviewed, so e.g. a review completed on Aug 2 ended up filed
+     * under the week of 8 June (and the real week showed "No review
+     * logged"). Moves each such review to the week its completion date
+     * belongs to. Idempotent, only moves into a free slot (never overwrites
+     * a review), and only saves if something actually moved.
+     */
+    refileMisfiledWeeklyReviews() {
+        const reviews = StorageManager.getWeeklyReviews();
+        let changed = false;
+        Object.keys(reviews).forEach(key => {
+            const review = reviews[key];
+            if (!review?.completedAt) return;
+            const target = this.getReviewedWeekKey(review.completedAt);
+            if (target === key || reviews[target]) return;
+            review.weekKey = target;
+            reviews[target] = review;
+            delete reviews[key];
+            changed = true;
+        });
+        if (changed) StorageManager.save(STORAGE_KEYS.WEEKLY_REVIEWS, reviews);
+        return changed;
     },
 
     /**

@@ -151,22 +151,29 @@ const Dashboard = {
     },
 
     renderWeeklyGoalsSection() {
-        const weekKey = CommitmentTracker.getWeekKey();
-        const review = StorageManager.getWeeklyReviews()[weekKey];
-        const goals = review?.goals || [];
-        if (goals.length === 0) return '';
+        // The week by the app's own day boundary (a 2am Monday is still Sunday).
+        // This week's goals were set at last Sunday's review, so they live on
+        // that earlier entry — looking under the current week's own key (as
+        // this used to) made them vanish from Monday on, so they could never
+        // be ticked and always read as failed at the next review.
+        const weekKey = CommitmentTracker.getWeekKey(new Date(Utils.getLogDateString() + 'T12:00:00'));
+        const { storeKey, goals } = CommitmentTracker.getGoalsForWeek(weekKey);
         return `
             <div class="dashboard-section">
                 <h2>🎯 This Week's Goals</h2>
                 <div class="weekly-goals-list">
-                    ${goals.map((g, i) => `
+                    ${goals.length === 0 ? '<p class="empty-text">No goals set for this week yet</p>' : goals.map((g, i) => `
                         <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
                             <input type="checkbox" ${g.completed ? 'checked' : ''}
-                                onchange="Dashboard.toggleWeeklyGoal('${weekKey}', ${i}); Dashboard.render();">
+                                onchange="Dashboard.toggleWeeklyGoal('${storeKey}', ${i}); Dashboard.render();">
                             <span>${Utils.escapeHtml(g.title)}</span>
                         </div>
                     `).join('')}
                 </div>
+                <form class="add-weekly-goal" onsubmit="Dashboard.addWeeklyGoal(event, '${weekKey}')">
+                    <input type="text" id="new-weekly-goal" class="input-text" placeholder="Add a goal for this week...">
+                    <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
+                </form>
             </div>
         `;
     },
@@ -739,12 +746,24 @@ const Dashboard = {
         `;
     },
 
-    toggleWeeklyGoal(weekKey, index) {
+    toggleWeeklyGoal(storeKey, index) {
         const reviews = StorageManager.getWeeklyReviews();
-        const review = reviews[weekKey];
+        const review = reviews[storeKey];
         if (!review || !review.goals || !review.goals[index]) return;
-        review.goals[index].completed = !review.goals[index].completed;
-        StorageManager.saveWeeklyReview(weekKey, review);
+        const goal = review.goals[index];
+        goal.completed = !goal.completed;
+        // Keep the review verdict in step with the tick
+        if (goal.completed) goal.status = 'done'; else delete goal.status;
+        StorageManager.saveWeeklyReview(storeKey, review);
+    },
+
+    addWeeklyGoal(event, weekKey) {
+        event.preventDefault();
+        const input = document.getElementById('new-weekly-goal');
+        const title = input?.value.trim();
+        if (!title) return;
+        CommitmentTracker.addGoalForWeek(weekKey, title);
+        Dashboard.render();
     },
 
     /**

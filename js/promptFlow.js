@@ -389,94 +389,123 @@ const PromptFlow = {
         return didEveningCheckin ? allSteps.filter(s => s.name !== 'bedtime-check') : allSteps;
     },
 
+    /**
+     * Stats for the Mon–Sun week starting at weekKey. Shown on the first
+     * weekly-review screen and saved with the review as a snapshot, so
+     * History can show how that week actually went.
+     *
+     * Everything is computed relative to the end of the week being
+     * reviewed, not "now" — a catch-up review done a few days late must
+     * still describe the right week. Dates are anchored to local noon
+     * because a bare YYYY-MM-DD string parses as UTC midnight, which would
+     * shift the 7-day window a day for timezones behind UTC.
+     */
+    getWeeklyStatsSnapshot(weekKey) {
+        const weekStartDate = new Date(weekKey + 'T12:00:00');
+        const weekEndDate = new Date(weekStartDate);
+        weekEndDate.setDate(weekEndDate.getDate() + 6);
+        const weekEnd = Utils.getDateString(weekEndDate);
+
+        const allCommitments = StorageManager.getAllCommitments();
+        let obligationsTotal = 0, obligationsCompleted = 0;
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(weekStartDate);
+            d.setDate(d.getDate() + i);
+            const c = allCommitments[Utils.getDateString(d)];
+            if (c?.obligations) {
+                obligationsTotal += c.obligations.length;
+                obligationsCompleted += c.obligations.filter(o => o.completed).length;
+            }
+        }
+
+        const weekEntries = TimeTracker.getEntriesByDateRange(weekKey, weekEnd);
+        const trackedMinutes = weekEntries.reduce((sum, e) => sum + e.duration, 0);
+        const rated = weekEntries.filter(e => e.focusRating);
+        const avgFocus = rated.length > 0
+            ? Number((rated.reduce((sum, e) => sum + e.focusRating, 0) / rated.length).toFixed(1))
+            : null;
+
+        return {
+            wakeupRate: CommitmentTracker.calculateWeeklyScore(weekEnd),
+            wakeupStreak: CommitmentTracker.calculateWakeupStreak(weekEnd).current,
+            obligationsCompleted,
+            obligationsTotal,
+            trackedMinutes,
+            avgFocus
+        };
+    },
+
+    /**
+     * Small "▲ 12%" / "▼ 5%" marker shown under a weekly stat; empty when
+     * there's nothing to compare against.
+     */
+    _statDelta(diff, format) {
+        if (diff === null || diff === undefined) return '';
+        if (diff === 0) return '<div class="weekly-stat-delta flat">– no change</div>';
+        const up = diff > 0;
+        return `<div class="weekly-stat-delta ${up ? 'up' : 'down'}">${up ? '▲' : '▼'} ${format(Math.abs(diff))}</div>`;
+    },
+
     getWeeklySteps() {
+        // The week being reviewed travels with the flow itself, so a stale
+        // marker left over from an earlier review can't redirect it
+        const weekKey = this.flowData.reviewWeekKey || CommitmentTracker.getPendingWeeklyReviewKey() || CommitmentTracker.getWeekKey();
+        // Goals for the week under review (set at the previous Sunday's review)
+        const judgedGoals = CommitmentTracker.getGoalsForWeek(weekKey).goals;
+
         return [
             {
                 name: 'weekly-stats',
                 skippable: false,
                 render: (data) => {
-                    // Use the pending review week key so the stats reflect the right week
-                    const pendingKey = CommitmentTracker.getPendingWeeklyReviewKey();
-                    const weekKey = pendingKey || CommitmentTracker.getWeekKey();
-                    const allCommitments = StorageManager.getAllCommitments();
-                    const wakeupStreak = CommitmentTracker.calculateWakeupStreak();
-                    const weeklyScore = CommitmentTracker.calculateWeeklyScore();
+                    const stats = this.getWeeklyStatsSnapshot(weekKey);
 
-                    // Count obligations completed this week.
-                    // Anchor to local noon — weekKey is a bare YYYY-MM-DD string,
-                    // which new Date() parses as UTC midnight; without the
-                    // anchor, .setDate()/.getDate() (local-time methods) could
-                    // shift the whole 7-day window a day for timezones behind UTC.
-                    let obTotal = 0, obCompleted = 0;
-                    const weekStartDate = new Date(weekKey + 'T12:00:00');
-                    for (let i = 0; i < 7; i++) {
-                        const d = new Date(weekStartDate);
-                        d.setDate(d.getDate() + i);
-                        const c = allCommitments[Utils.getDateString(d)];
-                        if (c?.obligations) {
-                            obTotal += c.obligations.length;
-                            obCompleted += c.obligations.filter(o => o.completed).length;
-                        }
-                    }
-
-                    // Total time tracked this week
-                    const weekStart = weekKey;
-                    const weekEndDate = new Date(weekKey + 'T12:00:00');
-                    weekEndDate.setDate(weekEndDate.getDate() + 6);
-                    const weekEnd = Utils.getDateString(weekEndDate);
-                    const weekEntries = TimeTracker.getEntriesByDateRange(weekStart, weekEnd);
-                    const totalTracked = weekEntries.reduce((sum, e) => sum + e.duration, 0);
-                    const avgFocus = weekEntries.filter(e => e.focusRating).length > 0
-                        ? (weekEntries.filter(e => e.focusRating).reduce((sum, e) => sum + e.focusRating, 0) / weekEntries.filter(e => e.focusRating).length).toFixed(1)
-                        : null;
-
-                    // Previous week's goals
-                    const prevWeekDate = new Date(weekKey + 'T12:00:00');
-                    prevWeekDate.setDate(prevWeekDate.getDate() - 7);
-                    const prevWeekKey = Utils.getDateString(prevWeekDate);
-                    const prevReview = StorageManager.getWeeklyReviews()[prevWeekKey];
-                    const prevGoals = prevReview?.goals || [];
+                    // Compare with the week before — only if that week actually had data,
+                    // otherwise every stat would show a misleading drop to/from zero
+                    const prev = this.getWeeklyStatsSnapshot(CommitmentTracker.shiftWeekKey(weekKey, -1));
+                    const hasPrev = prev.obligationsTotal > 0 || prev.trackedMinutes > 0 || prev.wakeupRate > 0;
+                    const obPct = s => s.obligationsTotal > 0 ? Math.round((s.obligationsCompleted / s.obligationsTotal) * 100) : 0;
+                    const fmtMin = m => m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ''}` : `${m}m`;
+                    const delta = {
+                        wakeup: hasPrev ? stats.wakeupRate - prev.wakeupRate : null,
+                        streak: hasPrev ? stats.wakeupStreak - prev.wakeupStreak : null,
+                        obligations: hasPrev ? obPct(stats) - obPct(prev) : null,
+                        time: hasPrev ? stats.trackedMinutes - prev.trackedMinutes : null,
+                        focus: hasPrev && stats.avgFocus !== null && prev.avgFocus !== null
+                            ? Number((stats.avgFocus - prev.avgFocus).toFixed(1)) : null
+                    };
 
                     return `
                         <div class="prompt-screen weekly-stats">
                             <h2>📅 Weekly Review</h2>
-                            <p class="subtitle">Here's how your week looked.</p>
-
-                            ${prevGoals.length > 0 ? `
-                                <div class="prev-goals-review">
-                                    <h3>🎯 Last Week's Goals</h3>
-                                    <div class="prev-goals-list">
-                                        ${prevGoals.map(g => `
-                                            <div class="prev-goal-item ${g.completed ? 'completed' : 'incomplete'}">
-                                                <span class="prev-goal-status">${g.completed ? '✅' : '❌'}</span>
-                                                <span class="prev-goal-title">${Utils.escapeHtml(g.title)}</span>
-                                            </div>
-                                        `).join('')}
-                                    </div>
-                                </div>
-                            ` : ''}
+                            <p class="subtitle">Here's how your week looked.${hasPrev ? ' Arrows show the change since the week before.' : ''}</p>
 
                             <div class="weekly-stats-grid">
                                 <div class="weekly-stat">
-                                    <div class="weekly-stat-value">${weeklyScore}%</div>
+                                    <div class="weekly-stat-value">${stats.wakeupRate}%</div>
                                     <div class="weekly-stat-label">Wake-up Rate</div>
+                                    ${this._statDelta(delta.wakeup, v => `${v}%`)}
                                 </div>
                                 <div class="weekly-stat">
-                                    <div class="weekly-stat-value">${wakeupStreak.current}</div>
+                                    <div class="weekly-stat-value">${stats.wakeupStreak}</div>
                                     <div class="weekly-stat-label">Current Streak</div>
+                                    ${this._statDelta(delta.streak, v => `${v} day${v === 1 ? '' : 's'}`)}
                                 </div>
                                 <div class="weekly-stat">
-                                    <div class="weekly-stat-value">${obTotal > 0 ? Math.round((obCompleted/obTotal)*100) : 0}%</div>
+                                    <div class="weekly-stat-value">${obPct(stats)}%</div>
                                     <div class="weekly-stat-label">Obligations Met</div>
+                                    ${this._statDelta(delta.obligations, v => `${v}%`)}
                                 </div>
                                 <div class="weekly-stat">
-                                    <div class="weekly-stat-value">${Math.floor(totalTracked / 60)}h</div>
+                                    <div class="weekly-stat-value">${Math.floor(stats.trackedMinutes / 60)}h</div>
                                     <div class="weekly-stat-label">Time Tracked</div>
+                                    ${this._statDelta(delta.time, fmtMin)}
                                 </div>
-                                ${avgFocus ? `
+                                ${stats.avgFocus ? `
                                     <div class="weekly-stat">
-                                        <div class="weekly-stat-value">${avgFocus}⭐</div>
+                                        <div class="weekly-stat-value">${stats.avgFocus.toFixed(1)}⭐</div>
                                         <div class="weekly-stat-label">Avg Focus</div>
+                                        ${this._statDelta(delta.focus, v => v.toFixed(1))}
                                     </div>
                                 ` : ''}
                             </div>
@@ -484,6 +513,51 @@ const PromptFlow = {
                     `;
                 }
             },
+            // Only when goals were set for this week — mark each one as done / partly / not done
+            judgedGoals.length > 0 ? {
+                name: 'weekly-goals-review',
+                skippable: false,
+                render: (data) => {
+                    // Start from what was already ticked on the dashboard during the week
+                    if (!data.goalJudgments) {
+                        data.goalJudgments = judgedGoals.map(g => ({
+                            status: g.status || (g.completed ? 'done' : null),
+                            note: g.note || ''
+                        }));
+                    }
+                    const options = [['done', '✅ Done'], ['partial', '🟡 Partly'], ['missed', '❌ Not done']];
+                    return `
+                        <div class="prompt-screen weekly-goals-review">
+                            <h2>🎯 This Week's Goals</h2>
+                            <p class="subtitle">How did each one go?</p>
+
+                            ${judgedGoals.map((g, i) => `
+                                <div class="goal-review-item" data-goal-index="${i}">
+                                    <div class="goal-review-title">${Utils.escapeHtml(g.title)}</div>
+                                    <div class="focus-options">
+                                        ${options.map(([status, label]) => `
+                                            <button type="button" class="focus-btn ${data.goalJudgments[i].status === status ? 'selected' : ''}"
+                                                    data-status="${status}" onclick="PromptFlow.setGoalStatus(${i}, '${status}')">${label}</button>
+                                        `).join('')}
+                                    </div>
+                                    <input type="text" class="input-text goal-review-note" id="goal-note-${i}"
+                                           placeholder="Optional note..." value="${Utils.escapeHtml(data.goalJudgments[i].note)}">
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                },
+                validate: (data) => {
+                    judgedGoals.forEach((g, i) => {
+                        data.goalJudgments[i].note = document.getElementById(`goal-note-${i}`)?.value.trim() || '';
+                    });
+                    if (data.goalJudgments.some(j => !j.status)) {
+                        Utils.showError('Mark each goal as done, partly done or not done');
+                        return false;
+                    }
+                    return true;
+                }
+            } : null,
             {
                 name: 'weekly-reflection',
                 skippable: true,
@@ -517,35 +591,27 @@ const PromptFlow = {
                 name: 'weekly-goals',
                 skippable: false,
                 render: (data) => {
+                    // Three blank fields by default; add or remove as needed.
+                    // Anything typed is kept if you step back and forward.
+                    const titles = data.nextGoalTitles && data.nextGoalTitles.length ? data.nextGoalTitles : ['', '', ''];
                     return `
                         <div class="prompt-screen weekly-goals">
                             <h2>🎯 Next Week's Goals</h2>
-                            <p class="subtitle">Set 3 meaningful goals for the coming week.</p>
+                            <p class="subtitle">Set the goals for the coming week — three to start, add or remove as you like. You can add more from the dashboard during the week.</p>
 
-                            <div class="form-group">
-                                <label for="weekly-goal-1">Goal #1</label>
-                                <input type="text" id="weekly-goal-1" class="input-text" 
-                                    placeholder="Most important goal for next week">
+                            <div id="weekly-goal-fields">
+                                ${titles.map(t => this._goalFieldHtml(t)).join('')}
                             </div>
-                            <div class="form-group">
-                                <label for="weekly-goal-2">Goal #2</label>
-                                <input type="text" id="weekly-goal-2" class="input-text"
-                                    placeholder="Second goal">
-                            </div>
-                            <div class="form-group">
-                                <label for="weekly-goal-3">Goal #3</label>
-                                <input type="text" id="weekly-goal-3" class="input-text"
-                                    placeholder="Third goal">
-                            </div>
+
+                            <button type="button" class="btn btn-text" onclick="PromptFlow.addGoalField()">+ Add another goal</button>
                         </div>
                     `;
                 },
+                setupListeners: () => this._refreshGoalFields(),
                 validate: (data) => {
-                    const goals = [];
-                    for (let i = 1; i <= 3; i++) {
-                        const val = document.getElementById(`weekly-goal-${i}`).value.trim();
-                        if (val) goals.push({ title: val, completed: false });
-                    }
+                    const values = Array.from(document.querySelectorAll('.weekly-goal-input')).map(el => el.value.trim());
+                    data.nextGoalTitles = values; // remember everything typed, blanks included
+                    const goals = values.filter(Boolean).map(title => ({ title, completed: false }));
                     if (goals.length === 0) {
                         Utils.showError('Set at least one goal for next week');
                         return false;
@@ -579,7 +645,51 @@ const PromptFlow = {
                     `;
                 }
             }
-        ];
+        ].filter(Boolean);
+    },
+
+    // ─── Weekly review: goal helpers ─────────────────────────────────────────
+
+    _goalFieldHtml(value = '') {
+        return `
+            <div class="goal-field">
+                <span class="goal-number"></span>
+                <input type="text" class="input-text weekly-goal-input" placeholder="A goal for the week" value="${Utils.escapeHtml(value)}">
+                <button type="button" class="btn-icon goal-remove-btn" title="Remove this goal" onclick="PromptFlow.removeGoalField(this)">✕</button>
+            </div>
+        `;
+    },
+
+    /** Renumber the goal fields and stop the last remaining one being removed. */
+    _refreshGoalFields() {
+        const fields = document.querySelectorAll('#weekly-goal-fields .goal-field');
+        fields.forEach((field, i) => {
+            field.querySelector('.goal-number').textContent = i + 1;
+            field.querySelector('.goal-remove-btn').disabled = fields.length === 1;
+        });
+    },
+
+    addGoalField() {
+        const container = document.getElementById('weekly-goal-fields');
+        if (!container) return;
+        container.insertAdjacentHTML('beforeend', this._goalFieldHtml());
+        this._refreshGoalFields();
+        container.querySelector('.goal-field:last-child .weekly-goal-input').focus();
+    },
+
+    removeGoalField(button) {
+        button.closest('.goal-field')?.remove();
+        this._refreshGoalFields();
+    },
+
+    /** Record done / partly / not done for one of last week's goals and highlight it. */
+    setGoalStatus(index, status) {
+        const judgment = this.flowData.goalJudgments?.[index];
+        if (!judgment) return;
+        judgment.status = status;
+        document.querySelectorAll(`.goal-review-item[data-goal-index="${index}"] .focus-btn`).forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.status === status);
+        });
     },
 
     /**
@@ -797,322 +907,11 @@ const PromptFlow = {
             },
 
             {
-        name: 'day-walkthrough',
+                name: 'day-walkthrough',
                 skippable: true,
-                render: (data) => {
-                    // Initialise walk-through state on first render
-                    if (!data.walkthrough) {
-                        const logDate = data.confirmedDate || Utils.getLogDateString();
-                        const commitment = StorageManager.getCommitments(logDate);
-                        const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
-                        const [wh, wm] = wakeupTime.split(':').map(Number);
-                        
-                        // Load existing time entries for this log day
-                        // Need to include entries from the next calendar day if they're before 5am
-                        const nextDay = new Date(logDate + 'T12:00:00');
-                        nextDay.setDate(nextDay.getDate() + 1);
-                        const nextDayStr = Utils.getDateString(nextDay);
-                        
-                        const existingEntries = TimeTracker.timeEntries.filter(entry => {
-                            // Include entries from the log date
-                            if (entry.date === logDate) {
-                                // But exclude entries before 5am (they belong to previous log day)
-                                const entryTime = new Date(entry.startTime);
-                                const entryHour = entryTime.getHours();
-                                return entryHour >= 5;
-                            }
-                            
-                            // Also include entries from next calendar day if before 5am
-                            if (entry.date === nextDayStr) {
-                                const entryTime = new Date(entry.startTime);
-                                const entryHour = entryTime.getHours();
-                                return entryHour < 5;
-                            }
-                            
-                            return false;
-                        }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
-                        
-                        // Convert existing entries to sessions
-                        const sessions = existingEntries.map(entry => {
-                            const startTime = new Date(entry.startTime);
-                            const hour = startTime.getHours();
-                            const minute = startTime.getMinutes();
-                            
-                            // If the entry is after midnight but before 5am, add 1440 to represent next day
-                            let startMinutes = hour * 60 + minute;
-                            if (hour < 5) {
-                                startMinutes += 1440;
-                            }
-                            
-                            return {
-                                activity: entry.activity,
-                                duration: entry.duration,
-                                focusRating: null,
-                                startMinutes: startMinutes,
-                                fromTimeTracker: true
-                            };
-                        });
-                        
-                        // Find the starting point (either wakeup or first logged activity)
-                        let startMinutes = wh * 60 + wm;
-                        if (sessions.length > 0 && sessions[0].startMinutes < startMinutes) {
-                            startMinutes = sessions[0].startMinutes;
-                        }
-                        
-                        // Calculate current position (end of last session or wakeup time)
-                        let currentMinutes = startMinutes;
-                        if (sessions.length > 0) {
-                            const lastSession = sessions[sessions.length - 1];
-                            currentMinutes = lastSession.startMinutes + lastSession.duration;
-                        }
-                        
-                        data.walkthrough = {
-                            currentMinutes: currentMinutes,
-                            sessions: sessions,
-                            phase: 'activity', // 'activity' | 'duration' | 'focus' | 'skip-duration'
-                            logDate: logDate
-                        };
-                    }
-
-                    const wt = data.walkthrough;
-
-                    // End of the log period:
-                    // - Past day (data.logBedtime set): use user-confirmed bedtime.
-                    //   If bedMinutes ≤ wakeMinutes the sleep crossed midnight → +1440.
-                    // - Today (data.logBedtime null): fall back to current clock, same as before.
-                    let endOfDayMinutes;
-                    if (data.logBedtime) {
-                        const [bh, bm] = data.logBedtime.split(':').map(Number);
-                        let bedMinutes = bh * 60 + bm;
-                        const logDateBed = data.confirmedDate || Utils.getLogDateString();
-                        const commitmentBed = StorageManager.getCommitments(logDateBed);
-                        const wakeupTimeBed = commitmentBed?.wakeup?.actual || commitmentBed?.wakeup?.commitment || '08:00';
-                        const [wbh, wbm] = wakeupTimeBed.split(':').map(Number);
-                        if (bedMinutes <= (wbh * 60 + wbm)) bedMinutes += 1440;
-                        endOfDayMinutes = bedMinutes;
-                    } else {
-                        const now = new Date();
-                        const h = now.getHours();
-                        endOfDayMinutes = h < 5 ? 1440 + h * 60 + now.getMinutes() : h * 60 + now.getMinutes();
-                    }
-                    
-                    // Calculate remaining time
-                    const remainingMinutes = Math.max(0, endOfDayMinutes - wt.currentMinutes);
-                    
-                    const accountedMinutes = wt.sessions.reduce((sum, s) => sum + s.duration, 0);
-                    const totalDayMinutes = remainingMinutes + accountedMinutes;
-                    const progressPct = totalDayMinutes > 0 ? Math.min(100, Math.round((accountedMinutes / totalDayMinutes) * 100)) : 0;
-
-                    const currentTimeStr = `${String(Math.floor(wt.currentMinutes / 60) % 24).padStart(2, '0')}:${String(wt.currentMinutes % 60).padStart(2, '0')}`;
-                    const formattedTime = Utils.formatTimeString(currentTimeStr);
-
-                    // Day is complete when there's less than 1 minute remaining
-                    const isComplete = remainingMinutes < 1;
-
-                    if (isComplete) {
-                        return `
-                            <div class="prompt-screen day-walkthrough">
-                                <h2>✅ Day Accounted For</h2>
-                                <p class="subtitle">You've walked through your entire day.</p>
-                                <div class="walkthrough-progress">
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: 100%"></div>
-                                    </div>
-                                    <p>${Utils.formatMinutes(accountedMinutes)} logged across ${wt.sessions.length} session${wt.sessions.length !== 1 ? 's' : ''}.</p>
-                                </div>
-                                <div class="sessions-summary">
-                                    ${wt.sessions.map(s => `
-                                        <div class="session-item">
-                                            <span class="session-activity">${Utils.escapeHtml(s.activity)}</span>
-                                            <span class="session-duration">${Utils.formatMinutes(s.duration)}</span>
-                                            ${s.focusRating ? `<span class="session-focus">${'⭐'.repeat(s.focusRating)}</span>` : ''}
-                                        </div>
-                                    `).join('')}
-                                </div>
-                            </div>
-                        `;
-                    }
-
-                    if (wt.phase === 'activity') {
-                        const trackedCount = wt.sessions.filter(s => s.fromTimeTracker).length;
-                        const manualCount = wt.sessions.length - trackedCount;
-                        
-                        return `
-                            <div class="prompt-screen day-walkthrough">
-                                <h2>🗓️ Walk Through Your Day</h2>
-                                <p class="subtitle">Starting from <strong>${formattedTime}</strong> — what were you doing?</p>
-                                
-                                <div class="walkthrough-progress">
-                                    <div class="progress-bar">
-                                        <div class="progress-fill" style="width: ${progressPct}%"></div>
-                                    </div>
-                                    <p class="progress-text">${Utils.formatMinutes(accountedMinutes)} of ~${Utils.formatMinutes(totalDayMinutes)} accounted for</p>
-                                    ${trackedCount > 0 ? `<p class="info-text">✓ ${trackedCount} activities already logged from time tracker</p>` : ''}
-                                </div>
-
-                                ${wt.sessions.length > 0 ? `
-                                    <div class="previous-session">
-                                        <p>Previous: <strong>${Utils.escapeHtml(wt.sessions[wt.sessions.length - 1].activity)}</strong> (${Utils.formatMinutes(wt.sessions[wt.sessions.length - 1].duration)})</p>
-                                    </div>
-                                ` : ''}
-
-                                <div class="form-group">
-                                    <label for="wt-activity">Activity</label>
-                                    <input type="text" id="wt-activity" class="input-text" placeholder="e.g. Slept, Worked on example sheet, Lunch..." autofocus>
-                                </div>
-
-                                <button class="btn btn-text" onclick="PromptFlow.walkthroughSkip()">
-                                    Can't remember this period
-                                </button>
-                            </div>
-                        `;
-                    }
-
-                    if (wt.phase === 'duration') {
-                        const remainingMinutes = Math.max(0, endOfDayMinutes - wt.currentMinutes);
-                        const remainingHours = Math.floor(remainingMinutes / 60);
-                        const remainingMins = remainingMinutes % 60;
-                        
-                        return `
-                            <div class="prompt-screen day-walkthrough">
-                                <h2>⏱️ How long?</h2>
-                                <p class="subtitle"><strong>${Utils.escapeHtml(wt.pendingActivity)}</strong> — starting at ${formattedTime}</p>
-
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="wt-hours">Hours</label>
-                                        <input type="number" id="wt-hours" class="input-number" min="0" max="24">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="wt-minutes">Minutes</label>
-                                        <input type="number" id="wt-minutes" class="input-number" min="0" max="59">
-                                    </div>
-                                </div>
-
-                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(remainingMinutes)}</p>
-                                
-                                <button class="btn btn-secondary" onclick="PromptFlow.walkthroughUntilNow()">
-                                    Until now (${remainingHours}h ${remainingMins}m)
-                                </button>
-                            </div>
-                        `;
-                    }
-
-                    if (wt.phase === 'focus') {
-                        const endMinutes = wt.currentMinutes;
-                        const endTimeStr = `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
-                        return `
-                            <div class="prompt-screen day-walkthrough">
-                                <h2>🎯 Focus Rating</h2>
-                                <p class="subtitle">How focused were you during <strong>${Utils.escapeHtml(wt.pendingActivity)}</strong>?</p>
-                                <p class="time-range">${formattedTime} → ${Utils.formatTimeString(endTimeStr)}</p>
-
-                                <div class="focus-options">
-                                    ${[1,2,3,4,5].map(n => `
-                                        <button class="focus-btn" data-rating="${n}" onclick="PromptFlow.walkthroughSetFocus(${n})">
-                                            ${'⭐'.repeat(n)}
-                                            <span class="focus-label">${['Distracted','Low','Moderate','Good','Deep'][n-1]}</span>
-                                        </button>
-                                    `).join('')}
-                                </div>
-
-                                <button class="btn btn-text" onclick="PromptFlow.walkthroughSetFocus(null)">
-                                    Skip rating
-                                </button>
-                            </div>
-                        `;
-                    }
-
-                    if (wt.phase === 'skip-duration') {
-                        return `
-                            <div class="prompt-screen day-walkthrough">
-                                <h2>⏭️ Skip Period</h2>
-                                <p class="subtitle">Roughly how long was this period you can't remember?</p>
-
-                                <div class="form-row">
-                                    <div class="form-group">
-                                        <label for="wt-skip-hours">Hours</label>
-                                        <input type="number" id="wt-skip-hours" class="input-number" min="0" max="24">
-                                    </div>
-                                    <div class="form-group">
-                                        <label for="wt-skip-minutes">Minutes</label>
-                                        <input type="number" id="wt-skip-minutes" class="input-number" min="0" max="59">
-                                    </div>
-                                </div>
-
-                                <p class="help-text">Remaining to account for: ~${Utils.formatMinutes(Math.max(0, endOfDayMinutes - wt.currentMinutes))}</p>
-                            </div>
-                        `;
-                    }
-                },
-                validate: (data) => {
-                    const wt = data.walkthrough;
-                    if (!wt) return true;
-
-                    // Same conditional ceiling as the render function
-                    let endOfDayMinutes;
-                    if (data.logBedtime) {
-                        const [bhV, bmV] = data.logBedtime.split(':').map(Number);
-                        let bedMinutesV = bhV * 60 + bmV;
-                        const logDateV = data.confirmedDate || Utils.getLogDateString();
-                        const commitmentV = StorageManager.getCommitments(logDateV);
-                        const wakeupTimeV = commitmentV?.wakeup?.actual || commitmentV?.wakeup?.commitment || '08:00';
-                        const [wbhV, wbmV] = wakeupTimeV.split(':').map(Number);
-                        if (bedMinutesV <= (wbhV * 60 + wbmV)) bedMinutesV += 1440;
-                        endOfDayMinutes = bedMinutesV;
-                    } else {
-                        const nowV = new Date();
-                        const hV = nowV.getHours();
-                        endOfDayMinutes = hV < 5 ? 1440 + hV * 60 + nowV.getMinutes() : hV * 60 + nowV.getMinutes();
-                    }
-
-                    if (wt.phase === 'activity') {
-                        const activity = document.getElementById('wt-activity')?.value.trim();
-                        if (!activity) {
-                            Utils.showError('Enter an activity or use "Can\'t remember"');
-                            return false;
-                        }
-                        wt.pendingActivity = activity;
-                        wt.pendingStartMinutes = wt.currentMinutes;
-                        wt.phase = 'duration';
-                        this.renderStep();
-                        return false; // stay on step, re-render
-                    }
-
-                    if (wt.phase === 'duration') {
-                        const hours = parseInt(document.getElementById('wt-hours')?.value) || 0;
-                        const minutes = parseInt(document.getElementById('wt-minutes')?.value) || 0;
-                        const duration = hours * 60 + minutes;
-                        if (duration <= 0) {
-                            Utils.showError('Enter a duration greater than 0');
-                            return false;
-                        }
-                        wt.pendingDuration = duration;
-                        wt.phase = 'focus';
-                        this.renderStep();
-                        return false;
-                    }
-
-                    if (wt.phase === 'skip-duration') {
-                        const hours = parseInt(document.getElementById('wt-skip-hours')?.value) || 0;
-                        const minutes = parseInt(document.getElementById('wt-skip-minutes')?.value) || 0;
-                        const duration = hours * 60 + minutes;
-                        if (duration <= 0) {
-                            Utils.showError('Enter a duration greater than 0');
-                            return false;
-                        }
-                        wt.currentMinutes += duration;
-                        wt.phase = 'activity';
-                        this.renderStep();
-                        return false;
-                    }
-
-                    // If complete, allow moving to next step
-                    if (endOfDayMinutes - wt.currentMinutes <= 0) return true;
-
-                    // Otherwise keep going
-                    return true;
-                }
+                render: (data) => this._renderWalkthrough(data),
+                setupListeners: (data) => this._setupWalkthrough(data),
+                validate: (data) => this._validateWalkthrough(data)
             },
 
             {
@@ -1622,18 +1421,21 @@ const PromptFlow = {
             const dateObj = new Date(confirmedDate + 'T12:00:00');
             const isSunday = dateObj.getDay() === 0;
             const weekKey = CommitmentTracker.getWeekKey(dateObj);
-            const alreadyReviewed = StorageManager.getLastWeeklyReview() === weekKey;
+            // The saved reviews themselves are the source of truth for "already
+            // reviewed" — the lastWeeklyReview marker could be pointing at a
+            // misfiled week. A goals-only entry (goals added from the dashboard
+            // before any review existed) has no completedAt and doesn't count.
+            const alreadyReviewed = !!StorageManager.getWeeklyReviews()[weekKey]?.completedAt;
 
             if (isSunday && !alreadyReviewed) {
-                // Persist the pending key explicitly, derived from the confirmed
-                // date — not the raw clock. completeWeeklyFlow() falls back to
-                // CommitmentTracker.getWeekKey() (current moment) if no pending
-                // key is set, which would misfile the review under the wrong
-                // week for a late catch-up check-in (e.g. logging Sunday's
-                // evening from Monday night).
-                if (!StorageManager.getPendingWeeklyReview()) {
-                    StorageManager.savePendingWeeklyReview(weekKey);
-                }
+                // The week under review is derived from the confirmed date and
+                // carried on the flow itself. Previously this only wrote the
+                // pending marker if none existed, so a stale marker from an
+                // earlier, never-completed review kept redirecting every later
+                // review to the wrong week (which is how an Aug 2 review ended
+                // up filed under the week of 8 June). Always overwrite it so
+                // nothing else can disagree with the flow.
+                StorageManager.savePendingWeeklyReview(weekKey);
 
                 this.pausedEveningFlow = {
                     flowData: this.flowData,
@@ -1641,7 +1443,7 @@ const PromptFlow = {
                 };
                 this.currentFlow = 'weekly';
                 this.currentStep = 0;
-                this.flowData = {};
+                this.flowData = { reviewWeekKey: weekKey };
                 this.renderStep();
                 return;
             }
@@ -1807,20 +1609,45 @@ const PromptFlow = {
      * Complete weekly review flow
      */
     completeWeeklyFlow() {
-        // Save goals and reflection into the weekly reviews store
-        const pendingKey = CommitmentTracker.getPendingWeeklyReviewKey();
-        const weekKey = pendingKey || CommitmentTracker.getWeekKey();
+        // Save goals, reflection and a snapshot of the week's stats into the
+        // weekly reviews store, under the week this flow was started for
+        const weekKey = this.flowData.reviewWeekKey
+            || CommitmentTracker.getPendingWeeklyReviewKey()
+            || CommitmentTracker.getWeekKey();
+
+        // Write each goal's verdict (done / partly / not done + note) back onto
+        // the goal it was about — those live on the previous week's review
+        if (this.flowData.goalJudgments) {
+            const { storeKey, goals } = CommitmentTracker.getGoalsForWeek(weekKey);
+            const judgedReview = StorageManager.getWeeklyReviews()[storeKey];
+            if (judgedReview) {
+                this.flowData.goalJudgments.forEach((judgment, i) => {
+                    const goal = goals[i];
+                    if (!goal) return;
+                    goal.status = judgment.status;
+                    goal.completed = judgment.status === 'done';
+                    if (judgment.note) goal.note = judgment.note; else delete goal.note;
+                });
+                judgedReview.goals = goals;
+                StorageManager.saveWeeklyReview(storeKey, judgedReview);
+            }
+        }
+
+        // Goals added from the dashboard for next week before this review
+        // happened (a late review) sit on this week's entry — keep them
+        const existingNextGoals = StorageManager.getWeeklyReviews()[weekKey]?.goals || [];
         const review = {
             weekKey,
             completedAt: new Date().toISOString(),
-            goals: this.flowData.weeklyGoals || [],
+            goals: [...(this.flowData.weeklyGoals || []), ...existingNextGoals],
             wins: this.flowData.weeklyWins || '',
-            struggles: this.flowData.weeklyStruggles || ''
+            struggles: this.flowData.weeklyStruggles || '',
+            stats: this.getWeeklyStatsSnapshot(weekKey)
         };
         StorageManager.saveWeeklyReview(weekKey, review);
 
         // Mark weekly review complete (clears pending key)
-        CommitmentTracker.completeWeeklyReview();
+        CommitmentTracker.completeWeeklyReview(weekKey);
 
         Utils.showSuccess('Weekly review complete! 🎉');
 
@@ -1926,117 +1753,567 @@ const PromptFlow = {
         }
     },
 
-    walkthroughSkip() {
-        if (!this.flowData.walkthrough) return;
-        this.flowData.walkthrough.phase = 'skip-duration';
-        this.renderStep();
+    // ─── Day walkthrough ─────────────────────────────────────────────────────
+    // The day is a set of non-overlapping blocks between its start (wake-up)
+    // and its end (bedtime, or now). Whatever isn't covered by a block is a
+    // "gap". The prompt always works on one gap — the earliest, unless the
+    // user tapped another — and any block can be edited or deleted at any
+    // time. Every block (except "can't remember" ones) is backed by a real
+    // Time Tracker entry, which is kept in step with it.
+
+    /** Minutes since the log date's midnight → "8:30 AM" (past midnight wraps). */
+    _wtClock(minutes) {
+        const h = Math.floor(minutes / 60) % 24;
+        const m = minutes % 60;
+        return Utils.formatTimeString(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`);
     },
 
-    walkthroughUntilNow() {
-        const wt = this.flowData.walkthrough;
-        if (!wt || wt.phase !== 'duration') return;
+    /** Minutes → "HH:MM" for a time input. */
+    _wtInputValue(minutes) {
+        const h = Math.floor(minutes / 60) % 24;
+        return `${String(h).padStart(2, '0')}:${String(minutes % 60).padStart(2, '0')}`;
+    },
 
-        // Same conditional ceiling as render/validate
-        let endOfDayMinutes;
-        if (this.flowData.logBedtime) {
-            const [bhU, bmU] = this.flowData.logBedtime.split(':').map(Number);
-            let bedMinutesU = bhU * 60 + bmU;
-            const logDateU = this.flowData.confirmedDate || Utils.getLogDateString();
-            const commitmentU = StorageManager.getCommitments(logDateU);
-            const wakeupTimeU = commitmentU?.wakeup?.actual || commitmentU?.wakeup?.commitment || '08:00';
-            const [wbhU, wbmU] = wakeupTimeU.split(':').map(Number);
-            if (bedMinutesU <= (wbhU * 60 + wbmU)) bedMinutesU += 1440;
-            endOfDayMinutes = bedMinutesU;
+    /** "HH:MM" → minutes within this day's window; a time before the day's start is after midnight. */
+    _wtParseClock(timeStr, dayStart) {
+        const [h, m] = timeStr.split(':').map(Number);
+        let minutes = h * 60 + m;
+        if (minutes < dayStart) minutes += 1440;
+        return minutes;
+    },
+
+    /**
+     * ISO timestamp for a minutes-of-day value on the log date. Anchored to
+     * local noon: logDate is a bare YYYY-MM-DD string, which parses as UTC
+     * midnight and would put every entry on the previous local day in
+     * timezones behind UTC. Hours ≥ 24 roll over to the next day.
+     */
+    _wtIso(logDate, minutes) {
+        const d = new Date(logDate + 'T12:00:00');
+        d.setHours(Math.floor(minutes / 60), minutes % 60, 0, 0);
+        return d.toISOString();
+    },
+
+    _walkthroughInit(data) {
+        const logDate = data.confirmedDate || Utils.getLogDateString();
+        const commitment = StorageManager.getCommitments(logDate);
+        const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
+        const [wh, wm] = wakeupTime.split(':').map(Number);
+
+        // Time entries already logged for this log day. Entries from the next
+        // calendar day before 5am belong to it too; entries before 5am on the
+        // log date itself belong to the previous log day.
+        const nextDay = new Date(logDate + 'T12:00:00');
+        nextDay.setDate(nextDay.getDate() + 1);
+        const nextDayStr = Utils.getDateString(nextDay);
+
+        const existingEntries = TimeTracker.timeEntries.filter(entry => {
+            const hour = new Date(entry.startTime).getHours();
+            if (entry.date === logDate) return hour >= 5;
+            if (entry.date === nextDayStr) return hour < 5;
+            return false;
+        }).sort((a, b) => new Date(a.startTime) - new Date(b.startTime));
+
+        const sessions = existingEntries.map(entry => {
+            const start = new Date(entry.startTime);
+            let startMinutes = start.getHours() * 60 + start.getMinutes();
+            if (start.getHours() < 5) startMinutes += 1440; // after midnight → next day
+            return {
+                id: Utils.generateId(),
+                entryId: entry.id,
+                activity: entry.activity,
+                startMinutes,
+                duration: entry.duration,
+                focusRating: entry.focusRating || null,
+                fromTimeTracker: true
+            };
+        });
+
+        // The day starts at wake-up, or earlier if something was logged before that
+        let dayStart = wh * 60 + wm;
+        if (sessions.length > 0 && sessions[0].startMinutes < dayStart) dayStart = sessions[0].startMinutes;
+
+        data.walkthrough = {
+            logDate,
+            dayStart,
+            sessions,
+            phase: 'activity',       // 'activity' | 'duration' | 'skip-duration' | 'edit'
+            target: null,            // start of a gap the user tapped, else the earliest gap is used
+            editing: null,           // id of the block being edited
+            pendingActivity: null,
+            pendingStartMinutes: null,
+            pendingRating: null,
+            editRating: null
+        };
+    },
+
+    /** End of the log period in minutes (may pass 1440): the confirmed bedtime for a past day, otherwise now. */
+    _walkthroughEnd(data) {
+        if (data.logBedtime) {
+            const [bh, bm] = data.logBedtime.split(':').map(Number);
+            let bedMinutes = bh * 60 + bm;
+            const logDate = data.confirmedDate || Utils.getLogDateString();
+            const commitment = StorageManager.getCommitments(logDate);
+            const wakeupTime = commitment?.wakeup?.actual || commitment?.wakeup?.commitment || '08:00';
+            const [wbh, wbm] = wakeupTime.split(':').map(Number);
+            // Bedtime at or before wake-up means sleep crossed midnight
+            if (bedMinutes <= (wbh * 60 + wbm)) bedMinutes += 1440;
+            return bedMinutes;
+        }
+        const now = new Date();
+        const h = now.getHours();
+        return h < 5 ? 1440 + h * 60 + now.getMinutes() : h * 60 + now.getMinutes();
+    },
+
+    /** Blocks and gaps in chronological order, plus just the gaps. Overlapping blocks are tolerated. */
+    _walkthroughLayout(wt, dayEnd) {
+        const blocks = [...wt.sessions].sort((a, b) => a.startMinutes - b.startMinutes);
+        const items = [];
+        const gaps = [];
+        let cursor = wt.dayStart;
+
+        const addGap = (start, end) => {
+            if (end - start >= 1) {
+                const gap = { type: 'gap', start, end };
+                items.push(gap);
+                gaps.push(gap);
+            }
+        };
+
+        blocks.forEach(session => {
+            if (session.startMinutes > cursor && cursor < dayEnd) addGap(cursor, Math.min(session.startMinutes, dayEnd));
+            items.push({ type: 'block', session });
+            cursor = Math.max(cursor, session.startMinutes + session.duration);
+        });
+        if (cursor < dayEnd) addGap(cursor, dayEnd);
+
+        return { items, gaps };
+    },
+
+    /** The gap being worked on: the one containing the anchor point, else the earliest. */
+    _wtActiveGap(wt, gaps) {
+        const anchor = (wt.phase === 'duration' || wt.phase === 'skip-duration') ? wt.pendingStartMinutes : wt.target;
+        return (anchor != null && gaps.find(g => g.start <= anchor && anchor < g.end)) || gaps[0] || null;
+    },
+
+    /** Optional 1–5 focus rating: tap to select, tap again to clear. */
+    _wtRatingRowHtml(selected) {
+        const labels = ['Distracted', 'Low', 'Moderate', 'Good', 'Deep'];
+        return `
+            <div class="form-group wt-rating">
+                <label>Focus <span class="optional-tag">(optional)</span></label>
+                <div class="focus-options" id="wt-rating-row">
+                    ${[1, 2, 3, 4, 5].map(n => `
+                        <button type="button" class="focus-btn ${selected === n ? 'selected' : ''}" data-rating="${n}"
+                                title="${labels[n - 1]}" onclick="PromptFlow.walkthroughPickRating(${n})">
+                            ${n}⭐<span class="focus-label">${labels[n - 1]}</span>
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+        `;
+    },
+
+    _wtDurationInputsHtml(idPrefix, hours = '', minutes = '') {
+        return `
+            <div class="form-group">
+                <label for="${idPrefix}-hours">Hours</label>
+                <input type="number" id="${idPrefix}-hours" class="input-number" min="0" max="24" value="${hours}">
+            </div>
+            <div class="form-group">
+                <label for="${idPrefix}-minutes">Minutes</label>
+                <input type="number" id="${idPrefix}-minutes" class="input-number" min="0" max="59" value="${minutes}">
+            </div>
+        `;
+    },
+
+    _renderWalkthrough(data) {
+        if (!data.walkthrough) this._walkthroughInit(data);
+        const wt = data.walkthrough;
+        const dayEnd = this._walkthroughEnd(data);
+        const { items, gaps } = this._walkthroughLayout(wt, dayEnd);
+        const activeGap = this._wtActiveGap(wt, gaps);
+        const editingSession = wt.phase === 'edit' ? wt.sessions.find(s => s.id === wt.editing) : null;
+
+        const totalMinutes = Math.max(0, dayEnd - wt.dayStart);
+        const gapMinutes = gaps.reduce((sum, g) => sum + (g.end - g.start), 0);
+        const accounted = Math.max(0, totalMinutes - gapMinutes);
+        const progressPct = totalMinutes > 0 ? Math.min(100, Math.round((accounted / totalMinutes) * 100)) : 0;
+        const trackedCount = wt.sessions.filter(s => s.fromTimeTracker).length;
+
+        // ── The form for whatever is being done right now ──
+        let panel;
+        if (editingSession) {
+            const hours = Math.floor(editingSession.duration / 60) || '';
+            const minutes = editingSession.duration % 60 || '';
+            panel = `
+                <h3>✏️ Edit this entry</h3>
+                <p class="subtitle">${this._wtClock(editingSession.startMinutes)} – ${this._wtClock(editingSession.startMinutes + editingSession.duration)}</p>
+                ${editingSession.skipped ? '' : `
+                    <div class="form-group">
+                        <label for="wt-edit-activity">Activity</label>
+                        <input type="text" id="wt-edit-activity" class="input-text" value="${Utils.escapeHtml(editingSession.activity)}">
+                    </div>
+                `}
+                <div class="form-row">${this._wtDurationInputsHtml('wt-edit', hours, minutes)}</div>
+                ${editingSession.skipped ? '' : this._wtRatingRowHtml(wt.editRating)}
+                <div class="wt-edit-actions">
+                    <button type="button" class="btn btn-primary" onclick="PromptFlow.handleNext()">Save</button>
+                    <button type="button" class="btn btn-secondary" onclick="PromptFlow.walkthroughCancelEdit()">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="PromptFlow.walkthroughDeleteBlock()">Delete</button>
+                </div>
+            `;
+        } else if (!activeGap) {
+            panel = `
+                <h3>✅ Day accounted for</h3>
+                <p class="subtitle">You've walked through your entire day. Tap any block below to change it, or continue.</p>
+            `;
+        } else if (wt.phase === 'duration') {
+            const free = activeGap.end - wt.pendingStartMinutes;
+            panel = `
+                <h3>⏱️ How long?</h3>
+                <p class="subtitle"><strong>${Utils.escapeHtml(wt.pendingActivity)}</strong></p>
+                <div class="form-row wt-time-row">
+                    <div class="form-group">
+                        <label for="wt-start">Starts at</label>
+                        <input type="time" id="wt-start" class="input-time" value="${this._wtInputValue(wt.pendingStartMinutes)}">
+                    </div>
+                    ${this._wtDurationInputsHtml('wt')}
+                </div>
+                ${this._wtRatingRowHtml(wt.pendingRating)}
+                <p class="help-text">Free until ${this._wtClock(activeGap.end)} (~${Utils.formatMinutes(free)})</p>
+                <button type="button" class="btn btn-secondary" onclick="PromptFlow.walkthroughUntilNow()">
+                    ${activeGap.end === dayEnd ? 'Until now' : `Until ${this._wtClock(activeGap.end)}`} (${Math.floor(free / 60)}h ${free % 60}m)
+                </button>
+            `;
+        } else if (wt.phase === 'skip-duration') {
+            const free = activeGap.end - wt.pendingStartMinutes;
+            panel = `
+                <h3>⏭️ Skip this period</h3>
+                <p class="subtitle">Starting ${this._wtClock(wt.pendingStartMinutes)} — roughly how long was the period you can't remember?</p>
+                <div class="form-row">${this._wtDurationInputsHtml('wt-skip')}</div>
+                <button type="button" class="btn btn-secondary" onclick="PromptFlow.walkthroughUntilNow()">
+                    The whole gap, until ${this._wtClock(activeGap.end)} (${Math.floor(free / 60)}h ${free % 60}m)
+                </button>
+            `;
         } else {
-            const nowU = new Date();
-            const hU = nowU.getHours();
-            endOfDayMinutes = hU < 5 ? 1440 + hU * 60 + nowU.getMinutes() : hU * 60 + nowU.getMinutes();
+            panel = `
+                <h3>What were you doing?</h3>
+                <p class="subtitle">Starting from <strong>${this._wtClock(activeGap.start)}</strong>${gaps.length > 1 || activeGap.end !== dayEnd ? ` — free until ${this._wtClock(activeGap.end)}` : ''}</p>
+                <div class="form-group">
+                    <label for="wt-activity">Activity</label>
+                    <input type="text" id="wt-activity" class="input-text" placeholder="e.g. Slept, Worked on example sheet, Lunch...">
+                </div>
+                <button type="button" class="btn btn-text" onclick="PromptFlow.walkthroughSkip()">
+                    Can't remember this period
+                </button>
+            `;
         }
 
-        // Calculate duration from current position to end of log period
-        const duration = endOfDayMinutes - wt.currentMinutes;
+        // ── The day so far, as a timeline ──
+        const timeline = items.map(item => {
+            if (item.type === 'gap') {
+                const mins = item.end - item.start;
+                const active = !editingSession && activeGap && item.start === activeGap.start;
+                return `
+                    <div class="tl-item tl-gap ${active ? 'tl-active' : ''}" style="min-height:${Math.max(40, Math.min(110, Math.round(mins * 0.5)))}px"
+                         onclick="PromptFlow.walkthroughPickGap(${item.start})">
+                        <div class="tl-time">${this._wtClock(item.start)}</div>
+                        <div class="tl-body"><span class="tl-gap-label">${active ? '▸ filling this' : '＋ tap to fill'} · ${Utils.formatMinutes(mins)} unaccounted</span></div>
+                    </div>
+                `;
+            }
+            const s = item.session;
+            return `
+                <div class="tl-item tl-block ${s.skipped ? 'tl-skipped' : ''} ${wt.editing === s.id && editingSession ? 'tl-editing' : ''}"
+                     style="min-height:${Math.max(48, Math.min(150, Math.round(s.duration * 0.9)))}px" onclick="PromptFlow.walkthroughEdit('${s.id}')">
+                    <div class="tl-time">${this._wtClock(s.startMinutes)}</div>
+                    <div class="tl-body">
+                        <div class="tl-title">${s.skipped ? '❓ Can\'t remember' : Utils.escapeHtml(s.activity)}</div>
+                        <div class="tl-meta">${Utils.formatMinutes(s.duration)} · until ${this._wtClock(s.startMinutes + s.duration)}${s.focusRating ? ` · ${'⭐'.repeat(s.focusRating)}` : ''}</div>
+                    </div>
+                </div>
+            `;
+        }).join('');
 
-        if (duration <= 0) {
-            Utils.showError('Already at end of logged period');
-            return;
-        }
-        
-        // Set the duration and move to focus phase
-        wt.pendingDuration = duration;
-        wt.phase = 'focus';
-        this.renderStep();
+        return `
+            <div class="prompt-screen day-walkthrough">
+                <h2>🗓️ Walk Through Your Day</h2>
+
+                <div class="walkthrough-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" style="width: ${progressPct}%"></div>
+                    </div>
+                    <p class="progress-text">${Utils.formatMinutes(accounted)} of ~${Utils.formatMinutes(totalMinutes)} accounted for</p>
+                    ${trackedCount > 0 ? `<p class="info-text">✓ ${trackedCount} ${trackedCount === 1 ? 'activity' : 'activities'} already logged from time tracker</p>` : ''}
+                </div>
+
+                <div id="wt-form-panel" class="wt-form-panel">${panel}</div>
+
+                <div class="day-timeline" id="wt-timeline">
+                    ${timeline}
+                    <div class="tl-item tl-end">
+                        <div class="tl-time">${this._wtClock(dayEnd)}</div>
+                        <div class="tl-body"><span class="tl-gap-label">${data.logBedtime ? 'Bedtime' : 'Now'}</span></div>
+                    </div>
+                </div>
+            </div>
+        `;
     },
 
-    walkthroughSetFocus(rating) {
+    _setupWalkthrough(data) {
+        const wt = data.walkthrough;
+        if (!wt) return;
+        // Keep the timeline scrolled to whatever is being worked on
+        const timeline = document.getElementById('wt-timeline');
+        const focus = timeline?.querySelector('.tl-editing, .tl-active');
+        // (a third of the way down, so the earlier part of the day stays visible above it)
+        if (timeline && focus) timeline.scrollTop = Math.max(0, focus.offsetTop - timeline.clientHeight / 3);
+        // Ready to type — but not when just viewing a block to edit it
+        if (wt.phase !== 'edit') document.querySelector('#wt-form-panel input:not([type="time"])')?.focus();
+    },
+
+    _validateWalkthrough(data) {
+        const wt = data.walkthrough;
+        if (!wt) return true;
+
+        if (wt.phase === 'edit') return this._wtSaveEdit(data);
+
+        const dayEnd = this._walkthroughEnd(data);
+        const { gaps } = this._walkthroughLayout(wt, dayEnd);
+        if (gaps.length === 0) return true; // whole day accounted for — move on
+
+        if (wt.phase === 'activity') {
+            const activity = document.getElementById('wt-activity')?.value.trim();
+            if (!activity) {
+                Utils.showError('Enter an activity or use "Can\'t remember"');
+                return false;
+            }
+            wt.pendingActivity = activity;
+            wt.pendingStartMinutes = this._wtActiveGap(wt, gaps).start;
+            wt.pendingRating = null;
+            wt.phase = 'duration';
+            this.renderStep();
+            return false; // stay on step, re-render
+        }
+
+        if (wt.phase === 'duration') return this._wtCommitBlock(data, false);
+        if (wt.phase === 'skip-duration') return this._wtCommitBlock(data, false);
+        return true;
+    },
+
+    /**
+     * Validate the duration form and add the block — a real activity (with its
+     * optional rating, saved as a Time Tracker entry) or a "can't remember"
+     * period (kept in the walkthrough only). Always returns false: the step
+     * re-renders itself rather than moving on.
+     */
+    _wtCommitBlock(data, untilEnd) {
+        const wt = data.walkthrough;
+        const skipping = wt.phase === 'skip-duration';
+        const { gaps } = this._walkthroughLayout(wt, this._walkthroughEnd(data));
+
+        const startInput = document.getElementById('wt-start');
+        const start = !skipping && startInput?.value
+            ? this._wtParseClock(startInput.value, wt.dayStart)
+            : wt.pendingStartMinutes;
+        const gap = gaps.find(g => g.start <= start && start < g.end);
+        if (!gap) {
+            Utils.showError("That start time isn't in a free part of your day");
+            return false;
+        }
+
+        let duration;
+        if (untilEnd) {
+            duration = gap.end - start;
+        } else {
+            const prefix = skipping ? 'wt-skip' : 'wt';
+            const hours = parseInt(document.getElementById(`${prefix}-hours`)?.value) || 0;
+            const minutes = parseInt(document.getElementById(`${prefix}-minutes`)?.value) || 0;
+            duration = hours * 60 + minutes;
+        }
+        if (duration <= 0) {
+            Utils.showError('Enter a duration greater than 0');
+            return false;
+        }
+        if (start + duration > gap.end) {
+            Utils.showError(`Only ${Utils.formatMinutes(gap.end - start)} is free from ${this._wtClock(start)} (until ${this._wtClock(gap.end)})`);
+            return false;
+        }
+
+        if (skipping) {
+            wt.sessions.push({ id: Utils.generateId(), entryId: null, skipped: true, activity: "Can't remember", startMinutes: start, duration, focusRating: null });
+        } else {
+            const entry = TimeTracker.createEntry({
+                activity: wt.pendingActivity,
+                category: 'work',
+                startTime: this._wtIso(wt.logDate, start),
+                endTime: this._wtIso(wt.logDate, start + duration),
+                notes: '',
+                focusRating: wt.pendingRating
+            });
+            wt.sessions.push({ id: Utils.generateId(), entryId: entry.id, activity: wt.pendingActivity, startMinutes: start, duration, focusRating: wt.pendingRating });
+        }
+
+        wt.pendingActivity = null;
+        wt.pendingStartMinutes = null;
+        wt.pendingRating = null;
+        wt.target = null; // carry on from the earliest gap
+        wt.phase = 'activity';
+        this.renderStep();
+        return false;
+    },
+
+    /** Save the edit form, updating the Time Tracker entry behind the block. Always returns false. */
+    _wtSaveEdit(data) {
+        const wt = data.walkthrough;
+        const session = wt.sessions.find(s => s.id === wt.editing);
+        if (!session) {
+            wt.phase = 'activity';
+            wt.editing = null;
+            this.renderStep();
+            return false;
+        }
+
+        const hours = parseInt(document.getElementById('wt-edit-hours')?.value) || 0;
+        const minutes = parseInt(document.getElementById('wt-edit-minutes')?.value) || 0;
+        const duration = hours * 60 + minutes;
+        const activity = session.skipped ? session.activity : document.getElementById('wt-edit-activity')?.value.trim();
+        if (!activity) {
+            Utils.showError('Enter an activity');
+            return false;
+        }
+        if (duration <= 0) {
+            Utils.showError('Enter a duration greater than 0');
+            return false;
+        }
+
+        // It can grow only into free time: not into the next block, not past the end
+        // of the day (and never forced shorter than it already is)
+        const dayEnd = this._walkthroughEnd(data);
+        const next = wt.sessions
+            .filter(s => s !== session && s.startMinutes > session.startMinutes)
+            .sort((a, b) => a.startMinutes - b.startMinutes)[0];
+        const limit = Math.max((next ? next.startMinutes : dayEnd) - session.startMinutes, session.duration);
+        if (duration > limit) {
+            Utils.showError(`Only ${Utils.formatMinutes(limit)} is free after ${this._wtClock(session.startMinutes)}${next ? ` (the next entry starts at ${this._wtClock(next.startMinutes)})` : ''}`);
+            return false;
+        }
+
+        const rating = session.skipped ? null : wt.editRating;
+        if (session.entryId) {
+            const entry = TimeTracker.timeEntries.find(e => e.id === session.entryId);
+            if (entry) {
+                TimeTracker.updateEntry(session.entryId, {
+                    activity,
+                    focusRating: rating,
+                    endTime: new Date(new Date(entry.startTime).getTime() + duration * 60000).toISOString()
+                });
+            } else {
+                // The entry was removed elsewhere — re-create it rather than silently losing the block
+                const recreated = TimeTracker.createEntry({
+                    activity, category: 'work', notes: '', focusRating: rating,
+                    startTime: this._wtIso(wt.logDate, session.startMinutes),
+                    endTime: this._wtIso(wt.logDate, session.startMinutes + duration)
+                });
+                session.entryId = recreated.id;
+            }
+        }
+
+        session.activity = activity;
+        session.duration = duration;
+        session.focusRating = rating;
+        wt.editing = null;
+        wt.editRating = null;
+        wt.phase = 'activity';
+        this.renderStep();
+        return false;
+    },
+
+    _wtScrollToForm() {
+        document.getElementById('wt-form-panel')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    },
+
+    /** "Can't remember this period" — switch to the skip form for the gap being worked on. */
+    walkthroughSkip() {
         const wt = this.flowData.walkthrough;
         if (!wt) return;
-
-        // Time entries from the walkthrough belong to the confirmed evening date
-        const logDate = this.flowData.confirmedDate || Utils.getLogDateString();
-        const startMinutes = wt.pendingStartMinutes;
-        const duration = wt.pendingDuration;
-
-        // Build ISO start/end times for the entry. Anchor to local noon —
-        // logDate is a bare YYYY-MM-DD string, which new Date() parses as UTC
-        // midnight. In a timezone behind UTC that instant falls on the
-        // PREVIOUS local calendar day, and setHours() below preserves
-        // whatever local date it lands on — silently saving every walkthrough
-        // time entry one day earlier than the confirmed evening date.
-        const logDateObj = new Date(logDate + 'T12:00:00');
-        const startTime = new Date(logDateObj);
-        startTime.setHours(Math.floor(startMinutes / 60), startMinutes % 60, 0, 0);
-        const endTime = new Date(startTime.getTime() + duration * 60000);
-
-        // Save to time tracker
-        TimeTracker.createEntry({
-            activity: wt.pendingActivity,
-            category: 'work',
-            startTime: startTime.toISOString(),
-            endTime: endTime.toISOString(),
-            notes: '',
-            focusRating: rating
-        });
-
-        // Log session in walkthrough state
-        wt.sessions.push({
-            activity: wt.pendingActivity,
-            duration: duration,
-            focusRating: rating
-        });
-
-        // Advance clock
-        wt.currentMinutes += duration;
-        wt.pendingActivity = null;
-        wt.pendingDuration = null;
-        wt.pendingStartMinutes = null;
-        
-        // Same conditional ceiling as render/validate/walkthroughUntilNow
-        let endOfDayMinutes;
-        if (this.flowData.logBedtime) {
-            const [bhF, bmF] = this.flowData.logBedtime.split(':').map(Number);
-            let bedMinutesF = bhF * 60 + bmF;
-            const logDateF = this.flowData.confirmedDate || Utils.getLogDateString();
-            const commitmentF = StorageManager.getCommitments(logDateF);
-            const wakeupTimeF = commitmentF?.wakeup?.actual || commitmentF?.wakeup?.commitment || '08:00';
-            const [wbhF, wbmF] = wakeupTimeF.split(':').map(Number);
-            if (bedMinutesF <= (wbhF * 60 + wbmF)) bedMinutesF += 1440;
-            endOfDayMinutes = bedMinutesF;
-        } else {
-            const nowF = new Date();
-            const hF = nowF.getHours();
-            endOfDayMinutes = hF < 5 ? 1440 + hF * 60 + nowF.getMinutes() : hF * 60 + nowF.getMinutes();
-        }
-
-        // If we've reached or passed bedtime, walkthrough is complete
-        if (wt.currentMinutes >= endOfDayMinutes) {
-            // Walkthrough complete, move to next step
-            this.handleNext();
-        } else {
-            // Continue with more activities
-            wt.phase = 'activity';
-            this.renderStep();
-        }
+        const { gaps } = this._walkthroughLayout(wt, this._walkthroughEnd(this.flowData));
+        const gap = this._wtActiveGap(wt, gaps);
+        if (!gap) return;
+        wt.pendingStartMinutes = gap.start;
+        wt.phase = 'skip-duration';
+        this.renderStep();
     },
+
+    /** "Until now / until X" — fill the rest of the free period (with whatever rating is selected). */
+    walkthroughUntilNow() {
+        const wt = this.flowData.walkthrough;
+        if (!wt || (wt.phase !== 'duration' && wt.phase !== 'skip-duration')) return;
+        this._wtCommitBlock(this.flowData, true);
+    },
+
+    /** Tap a gap on the timeline: work on that one next. */
+    walkthroughPickGap(startMinutes) {
+        const wt = this.flowData.walkthrough;
+        if (!wt) return;
+        wt.target = startMinutes;
+        wt.phase = 'activity';
+        wt.editing = null;
+        wt.pendingActivity = null;
+        this.renderStep();
+        this._wtScrollToForm();
+    },
+
+    /** Tap a block on the timeline: edit or delete it. */
+    walkthroughEdit(id) {
+        const wt = this.flowData.walkthrough;
+        const session = wt?.sessions.find(s => s.id === id);
+        if (!session) return;
+        wt.phase = 'edit';
+        wt.editing = id;
+        wt.editRating = session.focusRating || null;
+        this.renderStep();
+        this._wtScrollToForm();
+    },
+
+    walkthroughCancelEdit() {
+        const wt = this.flowData.walkthrough;
+        if (!wt) return;
+        wt.phase = 'activity';
+        wt.editing = null;
+        wt.editRating = null;
+        this.renderStep();
+    },
+
+    /** Delete the block being edited (and its Time Tracker entry), leaving a gap to fill. */
+    walkthroughDeleteBlock() {
+        const wt = this.flowData.walkthrough;
+        const session = wt?.sessions.find(s => s.id === wt.editing);
+        if (!session) return;
+        const label = session.skipped ? 'this unaccounted period' : `"${session.activity}"`;
+        if (!confirm(`Remove ${label} from your day?`)) return;
+
+        if (session.entryId) TimeTracker.deleteEntry(session.entryId);
+        wt.sessions = wt.sessions.filter(s => s !== session);
+        wt.phase = 'activity';
+        wt.editing = null;
+        wt.editRating = null;
+        wt.target = session.startMinutes; // the freed slot is the natural next thing to fill
+        this.renderStep();
+    },
+
+    /** Select / clear the optional focus rating on the current form. */
+    walkthroughPickRating(rating) {
+        const wt = this.flowData.walkthrough;
+        if (!wt) return;
+        const key = wt.phase === 'edit' ? 'editRating' : 'pendingRating';
+        wt[key] = wt[key] === rating ? null : rating;
+        document.querySelectorAll('#wt-rating-row .focus-btn').forEach(btn => {
+            btn.classList.toggle('selected', Number(btn.dataset.rating) === wt[key]);
+        });
+    },
+
 };
 
 // Make PromptFlow available globally

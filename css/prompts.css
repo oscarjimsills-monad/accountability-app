@@ -918,3 +918,202 @@
 }
 
 /* Made with Bob */
+
+/* ─── Weekly review: judging last week's goals ───────────────────────────── */
+.goal-review-item {
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+    padding: 1rem;
+    margin-bottom: 0.75rem;
+}
+
+.goal-review-title {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.goal-review-item .focus-options {
+    margin: 0.6rem 0;
+}
+
+.goal-review-note {
+    width: 100%;
+}
+
+/* ─── Weekly review: next week's goal fields (add / remove) ──────────────── */
+.goal-field {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+
+.goal-field .goal-number {
+    flex: 0 0 1.6rem;
+    height: 1.6rem;
+    line-height: 1.6rem;
+    text-align: center;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: #fff;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.goal-field .weekly-goal-input {
+    flex: 1;
+}
+
+.goal-remove-btn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+/* ─── Day walkthrough: form panel + day timeline ─────────────────────────── */
+.wt-form-panel {
+    margin: 1rem 0;
+}
+
+.wt-form-panel h3 {
+    margin-bottom: 0.25rem;
+    color: var(--text-primary);
+}
+
+.wt-edit-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 1rem;
+}
+
+.wt-edit-actions .btn-danger {
+    margin-left: auto;
+}
+
+.optional-tag {
+    font-weight: 400;
+    font-size: 0.85em;
+    color: var(--text-secondary);
+}
+
+/* Compact optional rating row: five equal buttons that fit a phone */
+.wt-rating .focus-options {
+    flex-wrap: nowrap;
+    gap: 0.35rem;
+    margin: 0.4rem 0;
+}
+
+.wt-rating .focus-btn {
+    flex: 1 1 0;
+    min-width: 0;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.1rem;
+    padding: 0.4rem 0.2rem;
+    font-size: 0.85rem;
+}
+
+.wt-rating .focus-label {
+    font-size: 0.62rem;
+    font-weight: 400;
+}
+
+/* The day so far, as a calendar-style timeline */
+.day-timeline {
+    position: relative; /* so scroll offsets are measured from the timeline itself */
+    max-height: 42vh;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    margin-top: 1rem;
+    padding: 0.5rem;
+    background: var(--background);
+    border: 1px solid var(--border-color);
+    border-radius: var(--radius);
+}
+
+.tl-item {
+    display: flex;
+    gap: 0.75rem;
+    margin-bottom: 0.35rem;
+    padding: 0.5rem 0.6rem;
+    border-radius: var(--radius);
+    cursor: pointer;
+}
+
+.tl-time {
+    flex: 0 0 4.4rem;
+    padding-top: 0.15rem;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.tl-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.tl-block {
+    background: var(--surface);
+    border: 1px solid var(--border-color);
+    border-left: 4px solid var(--primary-color);
+}
+
+.tl-block.tl-skipped {
+    border-left-color: var(--text-secondary);
+    opacity: 0.75;
+}
+
+.tl-block.tl-editing {
+    outline: 2px solid var(--primary-color);
+}
+
+.tl-title {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow-wrap: anywhere;
+}
+
+.tl-meta {
+    margin-top: 0.15rem;
+    font-size: 0.78rem;
+    color: var(--text-secondary);
+}
+
+.tl-gap {
+    align-items: center;
+    background: transparent;
+    border: 2px dashed var(--border-color);
+}
+
+.tl-gap:hover,
+.tl-gap.tl-active {
+    border-color: var(--primary-color);
+}
+
+.tl-gap.tl-active {
+    background: var(--surface);
+}
+
+.tl-gap-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.tl-end {
+    margin-bottom: 0;
+    cursor: default;
+}
+
+/* Starts at / Hours / Minutes on one row */
+/* (.form-row.wt-time-row: must outrank the stacked .form-row rules in the mobile breakpoints) */
+.form-row.wt-time-row {
+    display: grid;
+    grid-template-columns: 1.5fr 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.form-row.wt-time-row .form-group {
+    margin-bottom: 0;
+    min-width: 0;
+}

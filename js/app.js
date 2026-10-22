@@ -27,6 +27,9 @@ const App = {
             // Pull latest data from Supabase (source of truth on load)
             await StorageManager.loadFromSupabase();
 
+            // Move any weekly review filed under the wrong week to the right one
+            CommitmentTracker.refileMisfiledWeeklyReviews();
+
             // Apply saved theme before anything renders
             this.applyTheme(StorageManager.getSettings().theme || 'light');
 
@@ -1055,7 +1058,7 @@ const App = {
                         const mondayObj = new Date(item.weekKey + 'T12:00:00');
                         const sundayObj = new Date(item.sunday + 'T12:00:00');
                         const fmt = d => `${d.getDate()}/${d.getMonth() + 1}`;
-                        const hasReview = !!review;
+                        const hasReview = !!review?.completedAt; // goals-only entries (added from the dashboard) aren't reviews
                         return `
                             <div class="history-day-card history-weekly-review-card ${hasReview ? 'has-data' : 'no-data'}"
                                  onclick="App.showWeeklyReviewDetail('${item.weekKey}')">
@@ -1950,10 +1953,12 @@ const App = {
 showWeeklyReviewDetail(weekKey) {
     const container = document.getElementById('main-content');
     const review = StorageManager.getWeeklyReviews()[weekKey];
+    const reviewed = !!review?.completedAt; // goals-only entries (added from the dashboard) aren't reviews
     const monday = new Date(weekKey + 'T12:00:00');
     const sunday = new Date(monday);
     sunday.setDate(monday.getDate() + 6);
     const fmt = d => d.toLocaleDateString('en-GB', { day: 'numeric', month: 'long' });
+    const goalIcon = g => g.status === 'done' || g.completed ? '✅' : g.status === 'partial' ? '🟡' : g.status === 'missed' ? '❌' : '⬜';
 
     container.innerHTML = `
         <div class="view-header">
@@ -1963,8 +1968,37 @@ showWeeklyReviewDetail(weekKey) {
             <h1>📋 Week of ${fmt(monday)} – ${fmt(sunday)}</h1>
         </div>
 
-        ${review ? `
+        ${reviewed ? `
             <div class="day-detail-grid">
+                ${review.stats ? `
+                    <div class="detail-section">
+                        <h3>📊 How the week went</h3>
+                        <div class="weekly-stats-grid">
+                            <div class="weekly-stat">
+                                <div class="weekly-stat-value">${review.stats.wakeupRate}%</div>
+                                <div class="weekly-stat-label">Wake-up Rate</div>
+                            </div>
+                            <div class="weekly-stat">
+                                <div class="weekly-stat-value">${review.stats.wakeupStreak}</div>
+                                <div class="weekly-stat-label">Streak at week end</div>
+                            </div>
+                            <div class="weekly-stat">
+                                <div class="weekly-stat-value">${review.stats.obligationsTotal > 0 ? Math.round((review.stats.obligationsCompleted / review.stats.obligationsTotal) * 100) : 0}%</div>
+                                <div class="weekly-stat-label">Obligations Met (${review.stats.obligationsCompleted}/${review.stats.obligationsTotal})</div>
+                            </div>
+                            <div class="weekly-stat">
+                                <div class="weekly-stat-value">${Math.floor(review.stats.trackedMinutes / 60)}h ${review.stats.trackedMinutes % 60}m</div>
+                                <div class="weekly-stat-label">Time Tracked</div>
+                            </div>
+                            ${review.stats.avgFocus ? `
+                                <div class="weekly-stat">
+                                    <div class="weekly-stat-value">${review.stats.avgFocus.toFixed(1)}⭐</div>
+                                    <div class="weekly-stat-label">Avg Focus</div>
+                                </div>
+                            ` : ''}
+                        </div>
+                    </div>
+                ` : ''}
                 ${review.wins ? `
                     <div class="detail-section">
                         <h3>✨ What went well</h3>
@@ -1983,7 +2017,8 @@ showWeeklyReviewDetail(weekKey) {
                         <ul class="review-goals-list">
                             ${review.goals.map(g => `
                                 <li class="${g.completed ? 'completed' : ''}">
-                                    ${g.completed ? '✅' : '⬜'} ${Utils.escapeHtml(g.title)}
+                                    ${goalIcon(g)} ${Utils.escapeHtml(g.title)}
+                                    ${g.note ? `<div class="goal-note">${Utils.escapeHtml(g.note)}</div>` : ''}
                                 </li>
                             `).join('')}
                         </ul>

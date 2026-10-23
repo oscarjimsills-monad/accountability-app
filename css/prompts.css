@@ -271,8 +271,20 @@
 
 .obligation-info {
     display: flex;
+    flex: 1;
     flex-direction: column;
     gap: 0.25rem;
+    min-width: 0;
+}
+
+/* History's read-only-looking list: handle, status, title, time on one row */
+.obligations-summary .obligation-item {
+    justify-content: flex-start;
+    gap: 0.6rem;
+}
+
+.obligations-summary .obligation-title {
+    flex: 1;
 }
 
 .obligation-title {
@@ -280,10 +292,6 @@
     color: var(--prompt-text);
 }
 
-.obligation-time {
-    font-size: 0.85rem;
-    color: var(--prompt-subtitle);
-}
 
 /* ─── Day Selector ────────────────────────────────────────────────────────── */
 .day-selector {

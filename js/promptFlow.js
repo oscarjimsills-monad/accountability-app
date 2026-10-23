@@ -760,9 +760,10 @@ const PromptFlow = {
                         <div class="prompt-screen obligations-review">
                             <h2>📋 Today's Obligations</h2>
                             <p class="subtitle">How did you do? ${completed}/${obligations.length} completed.</p>
-                            <div class="obligations-list">
+                            <div class="obligations-list" id="ev-obligations-list">
                                 ${obligations.map((o, i) => `
-                                    <div class="obligation-card ${o.completed ? 'completed' : ''}">
+                                    <div class="obligation-card ${o.completed ? 'completed' : ''}" data-sort-index="${i}">
+                                        <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                                         <div class="obligation-checkbox">
                                             <input type="checkbox" id="ev-obligation-${i}" 
                                                 ${o.completed ? 'checked' : ''}
@@ -771,6 +772,7 @@ const PromptFlow = {
                                         </div>
                                         <div class="obligation-content">
                                             <h3 class="obligation-title">${Utils.escapeHtml(o.title)}</h3>
+                                            ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
                                         </div>
                                         ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
                                     </div>
@@ -778,6 +780,15 @@ const PromptFlow = {
                             </div>
                         </div>
                     `;
+                },
+                setupListeners: (data) => {
+                    const logDate = data.confirmedDate || Utils.getLogDateString();
+                    Utils.makeSortable(document.getElementById('ev-obligations-list'), {
+                        onReorder: (order) => {
+                            CommitmentTracker.reorderObligations(logDate, order);
+                            this.renderStep();
+                        }
+                    });
                 }
             },
 
@@ -1294,7 +1305,7 @@ const PromptFlow = {
                 skippable: false,
                 render: (data) => {
                     const obligationsHtml = data.obligations && data.obligations.length > 0
-                        ? data.obligations.map(o => `<li>${o.carriedOver ? '⚠️ ' : ''}${o.title}</li>`).join('')
+                        ? data.obligations.map(o => `<li>${o.carriedOver ? '⚠️ ' : ''}${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span> ` : ''}${Utils.escapeHtml(o.title)}</li>`).join('')
                         : '<li class="empty">None set</li>';
                     
                     const prioritiesHtml = data.priorities && data.priorities.length > 0
@@ -1370,17 +1381,28 @@ const PromptFlow = {
             return;
         }
         
+        // Order is the user's own ranking — new ones go to the bottom, drag to move
         list.innerHTML = obligations.map((o, i) => `
-            <div class="obligation-item ${o.carriedOver ? 'carried-over' : ''}">
+            <div class="obligation-item ${o.carriedOver ? 'carried-over' : ''}" data-sort-index="${i}">
+                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                 <div class="obligation-info">
                     <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
                     ${o.carriedOver ? '<span class="carried-tag">⚠️ Carried over</span>' : ''}
+                    ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
                 </div>
                 <button class="btn-icon" onclick="PromptFlow.removeObligation(${i})" title="Remove">
                     ✕
                 </button>
             </div>
         `).join('');
+
+        // These aren't saved until the check-in completes, so a drop just reorders the in-flow list
+        Utils.makeSortable(list, {
+            onReorder: (order) => {
+                this.flowData.obligations = order.map(i => this.flowData.obligations[i]);
+                this.renderObligations();
+            }
+        });
     },
 
     /**

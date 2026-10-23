@@ -76,43 +76,99 @@ const CommitmentTracker = {
      * zero changes, since it's just a normal obligation living in the normal
      * place — not a virtual/computed item.
      *
-     * Called on task create/update/toggle. Removes any stale linked entry
-     * first (covers the due date having moved), then re-adds it at the
-     * task's current due date if one is set.
+     * Called on task create/update/toggle, and for every dated task on each
+     * app load. Removes any entry on a date the task is no longer due on
+     * (covers the due date having moved), then brings the entry on the due
+     * date up to date. An existing entry is updated IN PLACE and only saved
+     * if something changed: obligations are ordered by the user (the order
+     * is their importance ranking), so removing and re-appending the entry
+     * on every sync would drop it back to the bottom of the list each time.
+     * A task that has no entry yet is added at the bottom.
      */
     syncTaskObligation(task) {
-        this.removeTaskObligation(task.id);
+        this.removeTaskObligation(task.id, task.dueDate);
 
         if (!task.dueDate) return;
 
         const commitments = StorageManager.getCommitments(task.dueDate) || this.createEmptyCommitment(task.dueDate);
         if (!commitments.obligations) commitments.obligations = [];
 
-        commitments.obligations.push({
+        const fresh = {
             sourceTaskId: task.id,
             title: task.title,
             time: task.dueTime || '',
             completed: task.completed,
             completedAt: task.completedAt || null
-        });
+        };
+
+        const existing = commitments.obligations.find(o => o.sourceTaskId === task.id);
+        if (existing) {
+            const unchanged = existing.title === fresh.title
+                && (existing.time || '') === fresh.time
+                && !!existing.completed === !!fresh.completed
+                && (existing.completedAt || null) === fresh.completedAt;
+            if (unchanged) return;
+            Object.assign(existing, fresh);
+        } else {
+            commitments.obligations.push(fresh);
+        }
 
         StorageManager.saveCommitments(task.dueDate, commitments);
     },
 
     /**
-     * Remove a task's linked obligation from wherever it currently lives.
-     * Searches every date since the task's due date may have changed since
-     * the obligation was last materialized.
+     * Remove a task's linked obligation from wherever it currently lives,
+     * optionally leaving the one on `exceptDate` alone. Searches every date
+     * since the task's due date may have changed since the obligation was
+     * last materialized.
      */
-    removeTaskObligation(taskId) {
+    removeTaskObligation(taskId, exceptDate = null) {
         const all = StorageManager.getAllCommitments();
         Object.keys(all).forEach(date => {
+            if (date === exceptDate) return;
             const commitments = all[date];
             if (commitments?.obligations?.some(o => o.sourceTaskId === taskId)) {
                 commitments.obligations = commitments.obligations.filter(o => o.sourceTaskId !== taskId);
                 StorageManager.saveCommitments(date, commitments);
             }
         });
+    },
+
+    /**
+     * Add an obligation to a date's list, at the bottom — position in the
+     * list is the obligation's importance, and the user drags it up from
+     * there. Works any time, e.g. something that comes up after the evening
+     * check-in that set the day's obligations.
+     */
+    addObligation(date, title, time = '') {
+        const commitments = StorageManager.getCommitments(date) || this.createEmptyCommitment(date);
+        if (!commitments.obligations) commitments.obligations = [];
+        commitments.obligations.push({ title, time: time || '', completed: false });
+        StorageManager.saveCommitments(date, commitments);
+    },
+
+    /**
+     * Save a new order for a date's obligations. `newOrder` is the stored
+     * array indices of the items shown in a list, in their new on-screen
+     * order. The list may show only some of the day's obligations (the
+     * Obligations page splits pending from completed): the shown items just
+     * swap among the positions they already occupy, so everything else
+     * stays where it was. Returns true only if the order actually changed.
+     */
+    reorderObligations(date, newOrder) {
+        const commitments = StorageManager.getCommitments(date);
+        const list = commitments?.obligations;
+        if (!list) return false;
+        if (new Set(newOrder).size !== newOrder.length || newOrder.some(i => !Number.isInteger(i) || !list[i])) return false;
+
+        const slots = [...newOrder].sort((a, b) => a - b);
+        if (newOrder.every((index, k) => index === slots[k])) return false;
+
+        const reordered = [...list];
+        slots.forEach((slot, k) => { reordered[slot] = list[newOrder[k]]; });
+        commitments.obligations = reordered;
+        StorageManager.saveCommitments(date, commitments);
+        return true;
     },
 
     /**

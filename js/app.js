@@ -323,69 +323,68 @@ const App = {
         const pending = obligations.filter(o => !o.completed);
         const completed = obligations.filter(o => o.completed);
         const totalCount = obligations.length;
-        
+
+        // Items are always in the order the user chose (position = importance), never
+        // sorted by time. Each card carries its index in the stored list so a drag can
+        // be saved back; the pending/completed split just shows two slices of that list.
+        const card = (obligation, index, done) => `
+            <div class="obligation-card ${done ? 'completed' : ''}" data-sort-index="${index}">
+                <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                <div class="obligation-checkbox">
+                    <input type="checkbox" id="obligation-${index}" ${done ? 'checked' : ''} onchange="App.toggleObligation(${index})">
+                    <label for="obligation-${index}"></label>
+                </div>
+                <div class="obligation-content">
+                    <h3 class="obligation-title">${Utils.escapeHtml(obligation.title)}</h3>
+                    ${obligation.time ? `<span class="obligation-time">${Utils.escapeHtml(obligation.time)}</span>` : ''}
+                </div>
+                ${done ? '<div class="completion-badge">✓</div>' : ''}
+            </div>
+        `;
+
         let html = '<div class="view-header">';
         html += '<h1>📋 Today\'s Obligations</h1>';
         html += '<div class="header-stats">';
         html += '<span class="completion-badge ' + (completed.length === totalCount && totalCount > 0 ? 'complete' : '') + '">';
         html += completed.length + '/' + totalCount + ' Complete';
         html += '</span></div></div>';
-        
+
+        // Add something that came up after the day's obligations were set (goes to the bottom)
+        html += `
+            <form class="add-obligation" onsubmit="App.addObligation(event)">
+                <input type="text" id="new-obligation-title" class="input-text" placeholder="Add an obligation for today...">
+                <input type="time" id="new-obligation-time" class="input-time" title="Time (optional)">
+                <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
+            </form>
+        `;
+
         if (obligations.length === 0) {
             html += '<div class="empty-state">';
             html += '<div class="empty-icon">📋</div>';
             html += '<h3>No obligations for today</h3>';
-            html += '<p>Set obligations during your evening check-in to see them here tomorrow.</p>';
+            html += '<p>Add one above, or set them during your evening check-in to see them here tomorrow.</p>';
             html += '</div>';
         } else {
-            // Pending obligations
             if (pending.length > 0) {
                 html += '<div class="obligations-section">';
                 html += '<h2 class="section-title">⏳ Pending (' + pending.length + ')</h2>';
-                html += '<div class="obligations-list">';
+                html += '<div class="obligations-list" id="ob-pending-list">';
                 obligations.forEach((obligation, index) => {
-                    if (!obligation.completed) {
-                        html += '<div class="obligation-card">';
-                        html += '<div class="obligation-checkbox">';
-                        html += '<input type="checkbox" id="obligation-' + index + '" onchange="App.toggleObligation(' + index + ')">';
-                        html += '<label for="obligation-' + index + '"></label>';
-                        html += '</div>';
-                        html += '<div class="obligation-content">';
-                        html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
-                        if (obligation.time) {
-                            html += '<span class="obligation-time">' + Utils.formatTimeString(obligation.time) + '</span>';
-                        }
-                        html += '</div></div>';
-                    }
+                    if (!obligation.completed) html += card(obligation, index, false);
                 });
                 html += '</div></div>';
             }
-            
-            // Completed obligations
+
             if (completed.length > 0) {
                 html += '<div class="obligations-section">';
                 html += '<h2 class="section-title">✅ Completed (' + completed.length + ')</h2>';
-                html += '<div class="obligations-list">';
+                html += '<div class="obligations-list" id="ob-completed-list">';
                 obligations.forEach((obligation, index) => {
-                    if (obligation.completed) {
-                        html += '<div class="obligation-card completed">';
-                        html += '<div class="obligation-checkbox">';
-                        html += '<input type="checkbox" id="obligation-' + index + '" checked onchange="App.toggleObligation(' + index + ')">';
-                        html += '<label for="obligation-' + index + '"></label>';
-                        html += '</div>';
-                        html += '<div class="obligation-content">';
-                        html += '<h3 class="obligation-title">' + Utils.escapeHtml(obligation.title) + '</h3>';
-                        if (obligation.time) {
-                            html += '<span class="obligation-time">' + Utils.formatTimeString(obligation.time) + '</span>';
-                        }
-                        html += '</div>';
-                        html += '<div class="completion-badge">✓</div>';
-                        html += '</div>';
-                    }
+                    if (obligation.completed) html += card(obligation, index, true);
                 });
                 html += '</div></div>';
             }
-            
+
             if (completed.length === totalCount && totalCount > 0) {
                 html += '<div class="success-message">';
                 html += '<h3>🎉 All obligations complete!</h3>';
@@ -393,8 +392,28 @@ const App = {
                 html += '</div>';
             }
         }
-        
+
         container.innerHTML = html;
+
+        // Drag to reorder; each drop is saved straight away
+        ['ob-pending-list', 'ob-completed-list'].forEach(id => {
+            Utils.makeSortable(document.getElementById(id), {
+                onReorder: (order) => {
+                    CommitmentTracker.reorderObligations(today, order);
+                    this.renderObligationsView();
+                }
+            });
+        });
+    },
+
+    /** Add an obligation to today's list (at the bottom) from the Obligations page. */
+    addObligation(event) {
+        event.preventDefault();
+        const title = document.getElementById('new-obligation-title')?.value.trim();
+        if (!title) return;
+        const time = document.getElementById('new-obligation-time')?.value || '';
+        CommitmentTracker.addObligation(Utils.getLogDateString(), title, time);
+        this.renderObligationsView();
     },
 
     /**
@@ -1249,12 +1268,13 @@ const App = {
 
         // ── Obligations content ─────────────────────────────────────────────
         const obligationsContent = commitment?.obligations?.length > 0 ? `
-            <div class="obligations-summary">
-                ${commitment.obligations.map(o => `
-                    <div class="obligation-item ${o.completed ? 'completed' : 'incomplete'}">
+            <div class="obligations-summary" id="hist-obligations-list">
+                ${commitment.obligations.map((o, i) => `
+                    <div class="obligation-item ${o.completed ? 'completed' : 'incomplete'}" data-sort-index="${i}">
+                        <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
                         <span class="obligation-status">${o.completed ? '✓' : '✗'}</span>
                         <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
-                        ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
+                        ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
                     </div>
                 `).join('')}
             </div>
@@ -1392,6 +1412,14 @@ const App = {
                 ${!hasAnyData ? '<div class="empty-state"><p>No data logged for this day</p></div>' : ''}
             </div>
         `;
+
+        // Obligations can be reordered here too; showDayDetail keeps the open sections open
+        Utils.makeSortable(document.getElementById('hist-obligations-list'), {
+            onReorder: (order) => {
+                CommitmentTracker.reorderObligations(date, order);
+                this.showDayDetail(date);
+            }
+        });
     },
 
     /**

@@ -128,6 +128,8 @@ const Dashboard = {
                 ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
             </div>
         `;
+
+        this.bindObligationSorting();
     },
 
     renderNightlyCheckinButton() {
@@ -182,49 +184,65 @@ const Dashboard = {
         const today = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(today);
         const obligations = commitment?.obligations || [];
-        if (obligations.length === 0) return '';
 
-        // Sort chronologically by time (obligations without time go last)
-        const sorted = [...obligations].sort((a, b) => {
-            if (!a.time && !b.time) return 0;
-            if (!a.time) return 1;
-            if (!b.time) return -1;
-            return a.time.localeCompare(b.time);
-        });
-
-        const completed = sorted.filter(o => o.completed).length;
-        const allDone = completed === sorted.length;
+        // Shown in the order the user chose — position in the list IS the
+        // importance ranking, so it is deliberately not sorted by time.
+        const completed = obligations.filter(o => o.completed).length;
+        const allDone = obligations.length > 0 && completed === obligations.length;
 
         return `
             <div class="dashboard-section">
                 <h2>📋 Today's Obligations
-                    <span class="completion-badge ${allDone ? 'complete' : ''}">${completed}/${sorted.length}</span>
+                    ${obligations.length > 0 ? `<span class="completion-badge ${allDone ? 'complete' : ''}">${completed}/${obligations.length}</span>` : ''}
                 </h2>
-                <div class="obligations-list">
-                    ${sorted.map((o, i) => {
-                        const origIndex = obligations.indexOf(o);
-                        return `
-                            <div class="obligation-card ${o.completed ? 'completed' : ''}">
-                                <div class="obligation-checkbox">
-                                    <input type="checkbox" id="dash-ob-${origIndex}"
-                                        ${o.completed ? 'checked' : ''}
-                                        onchange="App.toggleObligation(${origIndex}); Dashboard.render();">
-                                    <label for="dash-ob-${origIndex}"></label>
-                                </div>
-                                <div class="obligation-content">
-                                    <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
-                                    ${o.time ? `<span class="obligation-time">${Utils.formatTimeString(o.time)}</span>` : ''}
-                                </div>
-                                ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
+                <div class="obligations-list" id="dash-obligations-list">
+                    ${obligations.length === 0 ? '<p class="empty-text">No obligations for today yet</p>' : obligations.map((o, i) => `
+                        <div class="obligation-card ${o.completed ? 'completed' : ''}" data-sort-index="${i}">
+                            <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                            <div class="obligation-checkbox">
+                                <input type="checkbox" id="dash-ob-${i}"
+                                    ${o.completed ? 'checked' : ''}
+                                    onchange="App.toggleObligation(${i}); Dashboard.render();">
+                                <label for="dash-ob-${i}"></label>
                             </div>
-                        `;
-                    }).join('')}
+                            <div class="obligation-content">
+                                <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
+                                ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
+                            </div>
+                            ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
+                        </div>
+                    `).join('')}
                 </div>
+                <form class="add-obligation" onsubmit="Dashboard.addObligation(event)">
+                    <input type="text" id="new-obligation-title" class="input-text" placeholder="Add an obligation for today...">
+                    <input type="time" id="new-obligation-time" class="input-time" title="Time (optional)">
+                    <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
+                </form>
                 <div class="today-card-footer">
                     <a href="#" onclick="App.showView('obligations'); return false;">View all →</a>
                 </div>
             </div>
         `;
+    },
+
+    /** Add an obligation to today's list (at the bottom) from the dashboard. */
+    addObligation(event) {
+        event.preventDefault();
+        const title = document.getElementById('new-obligation-title')?.value.trim();
+        if (!title) return;
+        const time = document.getElementById('new-obligation-time')?.value || '';
+        CommitmentTracker.addObligation(Utils.getLogDateString(), title, time);
+        Dashboard.render();
+    },
+
+    /** Make the dashboard's obligation list drag-to-reorder; each drop saves immediately. */
+    bindObligationSorting() {
+        Utils.makeSortable(document.getElementById('dash-obligations-list'), {
+            onReorder: (order) => {
+                CommitmentTracker.reorderObligations(Utils.getLogDateString(), order);
+                Dashboard.render();
+            }
+        });
     },
 
     renderTodayPriorities() {

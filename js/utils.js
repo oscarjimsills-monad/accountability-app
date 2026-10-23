@@ -417,6 +417,105 @@ const Utils = {
      */
     sleep(ms) {
         return new Promise(resolve => setTimeout(resolve, ms));
+    },
+
+    /**
+     * Drag-to-reorder for a list. Built on pointer events so it behaves the
+     * same with a mouse, a finger or a pen — HTML5 drag-and-drop is
+     * unreliable on phones. Grab an item by its handle, drag it up or down,
+     * let go: the new order is passed to options.onReorder as the
+     * data-sort-index of every item in its new position, and only if the
+     * order actually changed. While dragging, a floating copy follows the
+     * pointer and the real item (dimmed) marks where it will land; the page
+     * scrolls when the pointer nears the top or bottom edge.
+     *
+     * Handles need `touch-action: none` (see .drag-handle) so a finger on
+     * them drags rather than scrolls.
+     *
+     * Safe to call again on the same container after its contents have been
+     * re-rendered: the listener is bound once and the options are refreshed.
+     *
+     * options: { itemSelector = '[data-sort-index]', handleSelector = '.drag-handle', onReorder(order) }
+     */
+    makeSortable(container, options) {
+        if (!container) return;
+        container._sortableOptions = options;
+        if (container._sortableBound) return;
+        container._sortableBound = true;
+
+        container.addEventListener('pointerdown', (event) => {
+            const { itemSelector = '[data-sort-index]', handleSelector = '.drag-handle', onReorder } = container._sortableOptions;
+            if (event.pointerType === 'mouse' && event.button !== 0) return;
+            const handle = event.target.closest(handleSelector);
+            const item = handle?.closest(itemSelector);
+            if (!handle || !item || !container.contains(item)) return;
+            event.preventDefault();
+
+            const items = () => Array.from(container.querySelectorAll(itemSelector));
+            const orderBefore = items().map(el => el.dataset.sortIndex).join(',');
+
+            // The floating copy that follows the pointer (ids stripped so the
+            // page never holds duplicates)
+            const rect = item.getBoundingClientRect();
+            const grabOffsetY = event.clientY - rect.top;
+            const ghost = item.cloneNode(true);
+            ghost.querySelectorAll('[id]').forEach(el => el.removeAttribute('id'));
+            ghost.classList.add('sortable-ghost');
+            ghost.style.width = `${rect.width}px`;
+            ghost.style.left = `${rect.left}px`;
+            ghost.style.top = `${rect.top}px`;
+            document.body.appendChild(ghost);
+            item.classList.add('sortable-placeholder');
+
+            let pointerY = event.clientY;
+            let scrollFrame = null;
+
+            // Put the real item wherever the pointer currently is
+            const placeItem = () => {
+                const others = items().filter(el => el !== item);
+                const below = others.find(el => {
+                    const r = el.getBoundingClientRect();
+                    return pointerY < r.top + r.height / 2;
+                });
+                if (below) {
+                    if (below.previousElementSibling !== item) container.insertBefore(item, below);
+                } else if (others.length) {
+                    const last = others[others.length - 1];
+                    if (last.nextElementSibling !== item) last.after(item);
+                }
+            };
+
+            const autoScroll = () => {
+                const edge = 70;
+                if (pointerY < edge) window.scrollBy(0, -12);
+                else if (pointerY > window.innerHeight - edge) window.scrollBy(0, 12);
+                else { scrollFrame = null; return; }
+                placeItem();
+                scrollFrame = requestAnimationFrame(autoScroll);
+            };
+
+            const onMove = (e) => {
+                pointerY = e.clientY;
+                ghost.style.top = `${pointerY - grabOffsetY}px`;
+                placeItem();
+                if (!scrollFrame) scrollFrame = requestAnimationFrame(autoScroll);
+            };
+
+            const finish = () => {
+                window.removeEventListener('pointermove', onMove);
+                window.removeEventListener('pointerup', finish);
+                window.removeEventListener('pointercancel', finish);
+                if (scrollFrame) cancelAnimationFrame(scrollFrame);
+                ghost.remove();
+                item.classList.remove('sortable-placeholder');
+                const order = items().map(el => Number(el.dataset.sortIndex));
+                if (order.join(',') !== orderBefore && onReorder) onReorder(order);
+            };
+
+            window.addEventListener('pointermove', onMove);
+            window.addEventListener('pointerup', finish);
+            window.addEventListener('pointercancel', finish);
+        });
     }
 };
 

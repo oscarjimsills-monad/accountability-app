@@ -1599,12 +1599,79 @@
     margin: 0 0 0.5rem 0;
 }
 
+/* Time of an obligation: a high-contrast 24h box, shown wherever obligations appear */
 .obligation-time {
+    display: block;
+    width: fit-content;
+    margin-top: 0.25rem;
+    padding: 0.15rem 0.55rem;
+    border-radius: 6px;
+    background: var(--text-primary);
+    color: var(--surface);
+    font-size: 0.85rem;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0.02em;
+    white-space: nowrap;
+}
+
+/* Drag-to-reorder: the order of the list is the importance ranking */
+.drag-handle {
+    flex: 0 0 auto;
+    padding: 0.5rem 0.4rem;
+    color: var(--text-primary);
+    opacity: 0.5;
+    font-size: 1.4rem;
+    line-height: 1;
+    letter-spacing: -0.15em;
+    cursor: grab;
+    touch-action: none; /* a finger on the handle drags instead of scrolling */
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+[data-sort-index] {
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* The floating copy that follows the pointer while dragging */
+.sortable-ghost {
+    position: fixed;
+    z-index: 2000;
+    margin: 0;
+    pointer-events: none;
+    opacity: 0.95;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+}
+
+/* The real item, marking where the dragged one will land */
+.sortable-placeholder {
+    opacity: 0.35;
+    border-style: dashed;
+}
+
+/* Add-an-obligation row (dashboard + Obligations page) */
+.add-obligation {
     display: flex;
-    align-items: center;
+    flex-wrap: wrap;
     gap: 0.5rem;
-    color: var(--text-secondary);
-    font-size: 0.9rem;
+    margin-top: 0.75rem;
+}
+
+.add-obligation .input-text {
+    flex: 1 1 14rem;
+    min-width: 0;
+}
+
+.add-obligation .input-time {
+    flex: 0 0 8.5rem;
+    width: 8.5rem;
 }
 
 .time-icon { font-size: 1rem; }

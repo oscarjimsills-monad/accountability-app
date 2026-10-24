@@ -46,7 +46,14 @@ const SYNC_META_KEYS = {
     // Which device (by the marker above) made the cloud's current state,
     // as of the last time this device checked — read back from the cloud
     // payload's embedded marker on a pull, or set to our own ID on a push.
-    LAST_UPDATED_BY_DEVICE: 'accountability_lastUpdatedByDevice'
+    LAST_UPDATED_BY_DEVICE: 'accountability_lastUpdatedByDevice',
+    // Id of the account whose data is in this browser's localStorage, so a
+    // different account signing in here can never inherit (or push to its
+    // own cloud row) someone else's data.
+    DATA_OWNER: 'accountability_dataOwner',
+    // Safety copy of the previous account's unsynced edits, set aside rather
+    // than deleted when a different account signs in. Never synced.
+    ORPHANED_BACKUP: 'accountability_orphanedBackup'
 };
 
 // Marker key embedded inside the synced `data` blob (not a real
@@ -355,7 +362,15 @@ const StorageManager = {
             const cloudMs = cloudUpdatedAt ? new Date(cloudUpdatedAt).getTime() : -Infinity;
             const knownMs = myLastKnownCloudUpdatedAt ? new Date(myLastKnownCloudUpdatedAt).getTime() : -Infinity;
 
-            if (cloudMs > knownMs) {
+            // Nothing stored locally at all (fresh browser, or just signed out)
+            // can never be "in sync" with a cloud row that has data in it, no
+            // matter what this device remembers about the cloud's timestamp.
+            // Without this, signing out and back in left the old timestamp
+            // behind, the app opened empty as "in sync", and the first edit
+            // pushed that near-empty state over the whole cloud copy.
+            const localIsEmpty = this.hasNoLocalData();
+
+            if (cloudMs > knownMs || (localIsEmpty && data?.data)) {
                 // Cloud has moved beyond what this device last confirmed —
                 // pull it down, whatever caused the move.
                 const cloudDeviceId = data?.data?.[CLOUD_DEVICE_MARKER] || null;
@@ -410,6 +425,54 @@ const StorageManager = {
             console.error('Storage remove error:', error);
             return false;
         }
+    },
+
+    /** True when none of the app's data keys exist in this browser. */
+    hasNoLocalData() {
+        return !Object.values(STORAGE_KEYS).some(key => localStorage.getItem(key) !== null);
+    },
+
+    /**
+     * Forget the signed-in account locally: its app data and the sync
+     * bookkeeping that describes it. Only DEVICE_ID survives, since that
+     * identifies the browser rather than any account. (Leaving the
+     * bookkeeping behind is what let a later sign-in believe it was already
+     * up to date with data that had just been wiped — see loadFromSupabase.)
+     */
+    clearLocalAccountData() {
+        Object.values(STORAGE_KEYS).forEach(key => localStorage.removeItem(key));
+        Object.entries(SYNC_META_KEYS).forEach(([name, key]) => {
+            if (name !== 'DEVICE_ID' && name !== 'ORPHANED_BACKUP') localStorage.removeItem(key);
+        });
+    },
+
+    /**
+     * Run once per app load after sign-in, before anything is pulled or
+     * pushed: make sure what's in this browser belongs to the account that
+     * just signed in.
+     *  - Data left by a different account is cleared (and, if it had edits
+     *    that never reached the cloud, set aside rather than destroyed).
+     *  - No local data at all means any leftover sync bookkeeping is stale.
+     *  - Data with no recorded owner predates this check and is adopted by
+     *    whoever is signing in.
+     */
+    claimLocalDataFor(userId) {
+        const owner = localStorage.getItem(SYNC_META_KEYS.DATA_OWNER);
+        if (owner && owner !== userId) {
+            if (!this.hasNoLocalData() && this.hasUnsyncedChanges()) {
+                const snapshot = { owner, savedAt: new Date().toISOString(), data: {} };
+                Object.values(STORAGE_KEYS).forEach(key => {
+                    const raw = localStorage.getItem(key);
+                    if (raw !== null) snapshot.data[key] = raw;
+                });
+                try { localStorage.setItem(SYNC_META_KEYS.ORPHANED_BACKUP, JSON.stringify(snapshot)); }
+                catch (e) { console.error('Could not set aside previous account data:', e); }
+            }
+            this.clearLocalAccountData();
+        } else if (this.hasNoLocalData()) {
+            this.clearLocalAccountData();
+        }
+        localStorage.setItem(SYNC_META_KEYS.DATA_OWNER, userId);
     },
 
     /**

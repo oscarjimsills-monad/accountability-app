@@ -478,8 +478,12 @@ body {
     inset: 0;
     background: var(--background);
     display: flex;
-    align-items: center;
     justify-content: center;
+    /* Scrolls when the content is taller than the screen (the email steps
+       add height); the container's auto margins keep it centred otherwise,
+       without clipping the top the way align-items: center would. */
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
     z-index: 9999;
 }
 
@@ -488,6 +492,7 @@ body {
     padding: 3rem 2rem;
     max-width: 380px;
     width: 100%;
+    margin: auto 0;
 }
 
 .auth-logo {
@@ -539,6 +544,74 @@ body {
     margin-top: 1.5rem;
     font-size: 0.8rem;
     color: var(--text-secondary);
+}
+
+.auth-divider {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin: 1.5rem 0;
+    color: var(--text-secondary);
+    font-size: 0.85rem;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border-color);
+}
+
+.auth-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    text-align: left;
+}
+
+.auth-label {
+    font-size: 0.9rem;
+    font-weight: 500;
+    color: var(--text-primary);
+}
+
+.auth-form .input-text,
+.auth-form .btn { width: 100%; }
+
+.auth-form .btn { justify-content: center; text-align: center; }
+
+/* 16px stops iOS zooming the page when an input is tapped */
+.auth-form .input-text { font-size: 1rem; }
+
+.auth-hint {
+    margin: 0;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+}
+
+.auth-sent { text-align: center; }
+.auth-sent h2 { font-size: 1.35rem; margin-bottom: 0.5rem; color: var(--text-primary); }
+.auth-sent p { color: var(--text-secondary); margin-bottom: 1.25rem; line-height: 1.5; overflow-wrap: anywhere; }
+.auth-sent-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+.auth-sent-actions { margin-top: 1rem; display: flex; justify-content: center; flex-wrap: wrap; gap: 0.25rem 1rem; }
+
+.auth-form .auth-code-input {
+    text-align: center;
+    letter-spacing: 0.3em;
+    font-size: 1.25rem;
+}
+
+.auth-message {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--radius);
+    border: 1px solid var(--error-text);
+    color: var(--error-text);
+    font-size: 0.9rem;
+    line-height: 1.4;
+    text-align: left;
 }
 
 /* Sidebar user info */

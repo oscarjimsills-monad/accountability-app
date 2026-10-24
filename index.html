@@ -7,12 +7,12 @@
     <title>Accountability App</title>
 
     <!-- CSS -->
-    <link rel="stylesheet" href="css/theme.css?v=58">
-    <link rel="stylesheet" href="css/styles.css?v=58">
-    <link rel="stylesheet" href="css/components.css?v=58">
-    <link rel="stylesheet" href="css/prompts.css?v=58">
-    <link rel="stylesheet" href="css/accountability.css?v=58">
-    <link rel="stylesheet" href="css/responsive.css?v=58">
+    <link rel="stylesheet" href="css/theme.css?v=59">
+    <link rel="stylesheet" href="css/styles.css?v=59">
+    <link rel="stylesheet" href="css/components.css?v=59">
+    <link rel="stylesheet" href="css/prompts.css?v=59">
+    <link rel="stylesheet" href="css/accountability.css?v=59">
+    <link rel="stylesheet" href="css/responsive.css?v=59">
 </head>
 <body>
 
@@ -31,6 +31,40 @@
                 </svg>
                 Sign in with Google
             </button>
+
+            <div class="auth-divider"><span>or</span></div>
+
+            <!-- Email sign-in: no password. We email a link (and a code); a new address gets an account automatically. -->
+            <form id="auth-email-form" class="auth-form" onsubmit="AuthManager.sendEmailLink(event)" novalidate>
+                <label for="auth-email" class="auth-label">Sign in or sign up with your email</label>
+                <input type="email" id="auth-email" class="input-text" placeholder="you@example.com"
+                       autocomplete="email" inputmode="email" autocapitalize="none" spellcheck="false"
+                       oninput="AuthManager.updateEmailHint(this.value)">
+                <p id="auth-gmail-hint" class="auth-hint" style="display: none;">
+                    Used the Google button before with this address? Use that button above instead &mdash; it's the surest way back to your existing data.
+                </p>
+                <button type="submit" id="auth-email-btn" class="btn btn-primary">Email me a sign-in link</button>
+                <p class="auth-hint">No password needed. New here? Just enter your email and your account is created for you.</p>
+            </form>
+
+            <div id="auth-sent" class="auth-sent" style="display: none;">
+                <div class="auth-sent-icon">📬</div>
+                <h2>Check your email</h2>
+                <p>We sent a sign-in link to <strong id="auth-sent-email"></strong>. Open it on this device to sign in.</p>
+                <form id="auth-code-form" class="auth-form" onsubmit="AuthManager.verifyEmailCode(event)" novalidate>
+                    <label for="auth-code" class="auth-label">Opening the email on another device? Enter the code from it instead.</label>
+                    <input type="text" id="auth-code" class="input-text auth-code-input" placeholder="123456"
+                           inputmode="numeric" autocomplete="one-time-code" maxlength="10">
+                    <button type="submit" id="auth-code-btn" class="btn btn-secondary">Sign in with code</button>
+                </form>
+                <div class="auth-sent-actions">
+                    <button type="button" id="auth-resend-btn" class="btn btn-text btn-sm" onclick="AuthManager.resendEmailLink()">Resend email</button>
+                    <button type="button" class="btn btn-text btn-sm" onclick="AuthManager.backToEmail()">Use a different email</button>
+                </div>
+            </div>
+
+            <p id="auth-message" class="auth-message" role="alert" style="display: none;"></p>
+
             <p class="auth-note">Your data is private and only accessible to you.</p>
         </div>
     </div>
@@ -76,7 +110,7 @@
             <!-- Header -->
             <header class="app-header">
                 <div class="header-content">
-                    <h1 class="app-title">Accountability <span class="app-version">v58</span></h1>
+                    <h1 class="app-title">Accountability <span class="app-version">v59</span></h1>
                     <div class="header-info">
                         <span id="current-date" class="current-date"></span>
                         <span id="streak-indicator" class="streak-indicator">0 days logged</span>
@@ -181,23 +215,23 @@
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
     <!-- JavaScript -->
-    <script src="js/utils.js?v=58"></script>
-    <script src="js/supabase-client.js?v=58"></script>
-    <script src="js/auth.js?v=58"></script>
-    <script src="js/storage.js?v=58"></script>
-    <script src="js/commitmentTracker.js?v=58"></script>
-    <script src="js/accountability.js?v=58"></script>
-    <script src="js/promptFlow.js?v=58"></script>
-    <script src="js/tasks.js?v=58"></script>
-    <script src="js/habits.js?v=58"></script>
-    <script src="js/goals.js?v=58"></script>
-    <script src="js/shoppingList.js?v=58"></script>
-    <script src="js/timeTracker.js?v=58"></script>
-    <script src="js/screentimeTracker.js?v=58"></script>
-    <script src="js/screentimeGraph.js?v=58"></script>
-    <script src="js/reflections.js?v=58"></script>
-    <script src="js/dashboard.js?v=58"></script>
-    <script src="js/dataManager.js?v=58"></script>
-    <script src="js/app.js?v=58"></script>
+    <script src="js/utils.js?v=59"></script>
+    <script src="js/supabase-client.js?v=59"></script>
+    <script src="js/auth.js?v=59"></script>
+    <script src="js/storage.js?v=59"></script>
+    <script src="js/commitmentTracker.js?v=59"></script>
+    <script src="js/accountability.js?v=59"></script>
+    <script src="js/promptFlow.js?v=59"></script>
+    <script src="js/tasks.js?v=59"></script>
+    <script src="js/habits.js?v=59"></script>
+    <script src="js/goals.js?v=59"></script>
+    <script src="js/shoppingList.js?v=59"></script>
+    <script src="js/timeTracker.js?v=59"></script>
+    <script src="js/screentimeTracker.js?v=59"></script>
+    <script src="js/screentimeGraph.js?v=59"></script>
+    <script src="js/reflections.js?v=59"></script>
+    <script src="js/dashboard.js?v=59"></script>
+    <script src="js/dataManager.js?v=59"></script>
+    <script src="js/app.js?v=59"></script>
 </body>
 </html>

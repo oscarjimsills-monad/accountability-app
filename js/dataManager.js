@@ -190,6 +190,21 @@ const DataManager = {
                     </div>
                 </div>
 
+                <!-- Dashboard Settings: each switch saves as soon as it is flipped -->
+                <div class="settings-section">
+                    <h2>Dashboard</h2>
+                    <p class="help-text">Choose what appears on your dashboard. Changes save automatically.</p>
+                    <div class="setting-toggles">
+                        ${Dashboard.SECTIONS.map(section => `
+                            <label class="setting-toggle">
+                                <input type="checkbox" ${Dashboard.isSectionVisible(section.key) ? 'checked' : ''}
+                                       onchange="Dashboard.setSectionVisible('${section.key}', this.checked)">
+                                <span>${section.label}</span>
+                            </label>
+                        `).join('')}
+                    </div>
+                </div>
+
                 <!-- Data Management -->
                 <div class="settings-section">
                     <h2>Data Management</h2>

@@ -24,6 +24,10 @@ const App = {
                 this.showAuthScreen();
                 return;
             }
+            // Make sure what's stored in this browser belongs to this account
+            // before anything is pulled or pushed
+            StorageManager.claimLocalDataFor(user.id);
+
             // Pull latest data from Supabase (source of truth on load)
             await StorageManager.loadFromSupabase();
 
@@ -81,6 +85,7 @@ const App = {
         const appContainer = document.getElementById('app');
         if (authScreen) authScreen.style.display = 'flex';
         if (appContainer) appContainer.style.display = 'none';
+        AuthManager.showUrlError();
     },
 
     /**

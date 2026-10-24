@@ -4,6 +4,94 @@
  */
 
 const Dashboard = {
+    // Dashboard sections that can be shown or hidden from Settings → Dashboard.
+    // The nightly check-in banner isn't listed: it's the way into the evening
+    // check-in, so it always shows while a check-in is due.
+    SECTIONS: [
+        { key: 'goals',      label: "This Week's Goals",              defaultOn: true },
+        { key: 'obligations',label: "Today's Obligations",            defaultOn: true },
+        { key: 'priorities', label: "Today's Priorities",             defaultOn: true },
+        { key: 'tasks',      label: 'Tasks',                          defaultOn: true },
+        { key: 'habits',     label: 'Habits',                         defaultOn: false },
+        { key: 'streaks',    label: 'Streaks',                        defaultOn: false },
+        { key: 'stats',      label: 'Accountability Stats',           defaultOn: true },
+        { key: 'timeToday',  label: "Today's Time Distribution",      defaultOn: true },
+        { key: 'timeWeek',   label: 'Last 7 Days Time Distribution',  defaultOn: true },
+        { key: 'activity',   label: 'Recent Activity',                defaultOn: true },
+        { key: 'tomorrow',   label: "Tomorrow's Commitments",         defaultOn: true }
+    ],
+
+    // Long lists show only their first few items on the dashboard
+    PREVIEW_COUNT: 3,
+
+    // Which sections are collapsed / showing all their items. Deliberately kept in
+    // memory only: every visit to the app starts with everything open at the preview.
+    _ui: { collapsed: {}, expanded: {} },
+
+    /** Whether a section is switched on — the user's setting, else its default. */
+    isSectionVisible(key) {
+        const saved = StorageManager.getSettings().dashboardSections;
+        if (saved && key in saved) return !!saved[key];
+        return this.SECTIONS.find(s => s.key === key)?.defaultOn ?? true;
+    },
+
+    /** Switch a section on or off (saved straight away, with the other settings). */
+    setSectionVisible(key, visible) {
+        const settings = StorageManager.getSettings();
+        settings.dashboardSections = { ...(settings.dashboardSections || {}), [key]: !!visible };
+        StorageManager.saveSettings(settings);
+        Utils.showSuccess('Dashboard updated!');
+    },
+
+    /**
+     * Wrap a section so tapping its header collapses it to just the header (and
+     * again to open it). Only a class is toggled — nothing is re-rendered — so
+     * anything typed into an add box elsewhere on the page survives.
+     */
+    sectionHtml(key, headingHtml, bodyHtml, extraClass = '') {
+        const collapsed = !!this._ui.collapsed[key];
+        return `
+            <div class="dashboard-section dash-collapsible ${collapsed ? 'is-collapsed' : ''} ${extraClass}" data-section="${key}">
+                <h2 class="dash-section-header" role="button" tabindex="0" aria-expanded="${!collapsed}"
+                    onclick="Dashboard.toggleSection('${key}')"
+                    onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); Dashboard.toggleSection('${key}'); }"
+                    title="Tap to collapse or expand">
+                    <span class="dash-chevron" aria-hidden="true"></span>${headingHtml}
+                </h2>
+                <div class="dash-section-body">${bodyHtml}</div>
+            </div>
+        `;
+    },
+
+    toggleSection(key) {
+        const collapsed = this._ui.collapsed[key] = !this._ui.collapsed[key];
+        const section = document.querySelector(`.dash-collapsible[data-section="${key}"]`);
+        section?.classList.toggle('is-collapsed', collapsed);
+        section?.querySelector('.dash-section-header')?.setAttribute('aria-expanded', String(!collapsed));
+    },
+
+    /**
+     * The first few items of a list. When there are more, `moreHtml` is a
+     * "+N more" button that opens the rest in place (and "Show less" to go
+     * back) — nothing is ever unreachable from the dashboard, e.g. a fourth
+     * goal that has no other page to be ticked off on.
+     */
+    previewItems(key, items) {
+        const expanded = !!this._ui.expanded[key];
+        const hidden = items.length - this.PREVIEW_COUNT;
+        return {
+            visible: expanded ? items : items.slice(0, this.PREVIEW_COUNT),
+            moreHtml: hidden > 0
+                ? `<button type="button" class="dash-more" onclick="Dashboard.toggleOverflow('${key}')">${expanded ? 'Show less' : `+${hidden} more`}</button>`
+                : ''
+        };
+    },
+
+    toggleOverflow(key) {
+        this._ui.expanded[key] = !this._ui.expanded[key];
+        this.render();
+    },
+
     /**
      * Render dashboard
      */
@@ -17,8 +105,9 @@ const Dashboard = {
         const stats = this.getOverallStats();
         const commitmentStats = CommitmentTracker.getStats();
         const todayCommitment = CommitmentTracker.getTodayCommitment();
-        const timeDistribution = this.getTimeDistribution();
 
+        // Which sections appear is the user's choice (Settings → Dashboard), and
+        // each one collapses to just its header when the header is tapped.
         container.innerHTML = `
             <div class="dashboard">
                 <div class="dashboard-header">
@@ -26,86 +115,64 @@ const Dashboard = {
                     <p class="dashboard-date">${Utils.formatDate(Utils.getLogDateString(), 'long')}</p>
                 </div>
 
-                <!-- Nightly Check-in Button (shown after 20:00 until completed) -->
+                <!-- Nightly Check-in Button (always shown while a check-in is due) -->
                 ${this.renderNightlyCheckinButton()}
 
-                <!-- This Week's Goals -->
                 ${this.renderWeeklyGoalsSection()}
-
-                <!-- Today's Obligations -->
                 ${this.renderTodayObligations()}
-
-                <!-- Today's Priorities -->
                 ${this.renderTodayPriorities()}
+                ${this.renderTasksSection()}
+                ${this.renderHabitsSection(stats.habits)}
+                ${this.renderStreaksSection()}
+                ${this.renderStatsSection(commitmentStats)}
+                ${this.renderTimeDistributionSection('timeToday', "⏰ Today's Time Distribution", () => this.getTimeDistribution())}
+                ${this.renderTimeDistributionSection('timeWeek', '📅 Last 7 Days Time Distribution', () => this.getWeeklyTimeDistribution())}
+                ${this.renderActivitySection()}
+                ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
+            </div>
+        `;
 
-                <!-- Today's Overview -->
-                <div class="dashboard-section">
-                    <h2>📅 Today</h2>
-                    <div class="today-grid">
-                        ${this.renderTasksCard()}
-                        ${this.renderTodayHabits(stats.habits)}
+        this.bindObligationSorting();
+    },
+
+    renderStreaksSection() {
+        if (!this.isSectionVisible('streaks')) return '';
+        return this.sectionHtml('streaks', '🔥 Streaks', this.renderStreaksGrid());
+    },
+
+    renderStatsSection(commitmentStats) {
+        if (!this.isSectionVisible('stats')) return '';
+        return this.sectionHtml('stats', '📊 Accountability Stats', `
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon">📈</div>
+                    <div class="stat-content">
+                        <div class="stat-value">${commitmentStats.weeklyScore}%</div>
+                        <div class="stat-label">This Week</div>
                     </div>
                 </div>
-
-                <!-- Streaks Overview -->
-                <div class="dashboard-section">
-                    <h2>🔥 Streaks</h2>
-                    ${this.renderStreaksGrid()}
-                </div>
-
-                <!-- Accountability Overview -->
-                <div class="dashboard-section">
-                    <h2>📊 Accountability Stats</h2>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <div class="stat-icon">📈</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${commitmentStats.weeklyScore}%</div>
-                                <div class="stat-label">This Week</div>
-                            </div>
-                        </div>
-                        <div class="stat-card">
-                            <div class="stat-icon">🎯</div>
-                            <div class="stat-content">
-                                <div class="stat-value">${commitmentStats.wakeupRate}%</div>
-                                <div class="stat-label">All-Time Rate</div>
-                            </div>
-                        </div>
+                <div class="stat-card">
+                    <div class="stat-icon">🎯</div>
+                    <div class="stat-content">
+                        <div class="stat-value">${commitmentStats.wakeupRate}%</div>
+                        <div class="stat-label">All-Time Rate</div>
                     </div>
                 </div>
+            </div>
+        `);
+    },
 
-                <!-- Time Distribution (Today) -->
-                ${timeDistribution.hasData ? `
-                    <div class="dashboard-section">
-                        <h2>⏰ Today's Time Distribution</h2>
-                        <div class="time-distribution-container">
-                            <div class="pie-chart-container">
-                                ${this.renderPieChart(timeDistribution.data)}
-                            </div>
-                            <div class="time-legend">
-                                ${timeDistribution.data.map(item => `
-                                    <div class="legend-item">
-                                        <span class="legend-color" style="background: ${item.color}"></span>
-                                        <span class="legend-label">${item.category}</span>
-                                        <span class="legend-value">${item.hours}h ${item.minutes}m</span>
-                                        <span class="legend-percent">(${item.percentage}%)</span>
-                                    </div>
-                                `).join('')}
-                            </div>
-                        </div>
-                    </div>
-                ` : ''}
-                ${(() => {
-    const weekDist = this.getWeeklyTimeDistribution();
-    return weekDist.hasData ? `
-        <div class="dashboard-section">
-            <h2>📅 Last 7 Days Time Distribution</h2>
+    renderTimeDistributionSection(key, title, getDistribution) {
+        if (!this.isSectionVisible(key)) return '';
+        const distribution = getDistribution();
+        if (!distribution.hasData) return '';
+        return this.sectionHtml(key, title, `
             <div class="time-distribution-container">
                 <div class="pie-chart-container">
-                    ${this.renderPieChart(weekDist.data)}
+                    ${this.renderPieChart(distribution.data)}
                 </div>
                 <div class="time-legend">
-                    ${weekDist.data.map(item => `
+                    ${distribution.data.map(item => `
                         <div class="legend-item">
                             <span class="legend-color" style="background: ${item.color}"></span>
                             <span class="legend-label">${item.category}</span>
@@ -115,21 +182,12 @@ const Dashboard = {
                     `).join('')}
                 </div>
             </div>
-        </div>
-    ` : '';
-})()}
+        `);
+    },
 
-                <!-- Recent Activity -->
-                <div class="dashboard-section">
-                    <h2>📋 Recent Activity</h2>
-                    ${this.renderRecentActivity()}
-                </div>
-
-                ${todayCommitment ? this.renderTomorrowCommitments(todayCommitment) : ''}
-            </div>
-        `;
-
-        this.bindObligationSorting();
+    renderActivitySection() {
+        if (!this.isSectionVisible('activity')) return '';
+        return this.sectionHtml('activity', '📋 Recent Activity', this.renderRecentActivity());
     },
 
     renderNightlyCheckinButton() {
@@ -153,6 +211,8 @@ const Dashboard = {
     },
 
     renderWeeklyGoalsSection() {
+        if (!this.isSectionVisible('goals')) return '';
+
         // The week by the app's own day boundary (a 2am Monday is still Sunday).
         // This week's goals were set at last Sunday's review, so they live on
         // that earlier entry — looking under the current week's own key (as
@@ -160,27 +220,29 @@ const Dashboard = {
         // be ticked and always read as failed at the next review.
         const weekKey = CommitmentTracker.getWeekKey(new Date(Utils.getLogDateString() + 'T12:00:00'));
         const { storeKey, goals } = CommitmentTracker.getGoalsForWeek(weekKey);
-        return `
-            <div class="dashboard-section">
-                <h2>🎯 This Week's Goals</h2>
-                <div class="weekly-goals-list">
-                    ${goals.length === 0 ? '<p class="empty-text">No goals set for this week yet</p>' : goals.map((g, i) => `
-                        <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
-                            <input type="checkbox" ${g.completed ? 'checked' : ''}
-                                onchange="Dashboard.toggleWeeklyGoal('${storeKey}', ${i}); Dashboard.render();">
-                            <span>${Utils.escapeHtml(g.title)}</span>
-                        </div>
-                    `).join('')}
-                </div>
-                <form class="add-weekly-goal" onsubmit="Dashboard.addWeeklyGoal(event, '${weekKey}')">
-                    <input type="text" id="new-weekly-goal" class="input-text" placeholder="Add a goal for this week...">
-                    <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
-                </form>
+        const { visible, moreHtml } = this.previewItems('goals', goals.map((g, i) => ({ g, i })));
+
+        return this.sectionHtml('goals', "🎯 This Week's Goals", `
+            <div class="weekly-goals-list">
+                ${goals.length === 0 ? '<p class="empty-text">No goals set for this week yet</p>' : visible.map(({ g, i }) => `
+                    <div class="weekly-goal-card ${g.completed ? 'completed' : ''}">
+                        <input type="checkbox" ${g.completed ? 'checked' : ''}
+                            onchange="Dashboard.toggleWeeklyGoal('${storeKey}', ${i}); Dashboard.render();">
+                        <span>${Utils.escapeHtml(g.title)}</span>
+                    </div>
+                `).join('')}
             </div>
-        `;
+            ${moreHtml}
+            <form class="add-weekly-goal" onsubmit="Dashboard.addWeeklyGoal(event, '${weekKey}')">
+                <input type="text" id="new-weekly-goal" class="input-text" placeholder="Add a goal for this week...">
+                <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
+            </form>
+        `);
     },
 
     renderTodayObligations() {
+        if (!this.isSectionVisible('obligations')) return '';
+
         const today = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(today);
         const obligations = commitment?.obligations || [];
@@ -189,40 +251,38 @@ const Dashboard = {
         // importance ranking, so it is deliberately not sorted by time.
         const completed = obligations.filter(o => o.completed).length;
         const allDone = obligations.length > 0 && completed === obligations.length;
+        const { visible, moreHtml } = this.previewItems('obligations', obligations.map((o, i) => ({ o, i })));
 
-        return `
-            <div class="dashboard-section">
-                <h2>📋 Today's Obligations
-                    ${obligations.length > 0 ? `<span class="completion-badge ${allDone ? 'complete' : ''}">${completed}/${obligations.length}</span>` : ''}
-                </h2>
-                <div class="obligations-list" id="dash-obligations-list">
-                    ${obligations.length === 0 ? '<p class="empty-text">No obligations for today yet</p>' : obligations.map((o, i) => `
-                        <div class="obligation-card ${o.completed ? 'completed' : ''}" data-sort-index="${i}">
-                            <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
-                            <div class="obligation-checkbox">
-                                <input type="checkbox" id="dash-ob-${i}"
-                                    ${o.completed ? 'checked' : ''}
-                                    onchange="App.toggleObligation(${i}); Dashboard.render();">
-                                <label for="dash-ob-${i}"></label>
-                            </div>
-                            <div class="obligation-content">
-                                <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
-                                ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
-                            </div>
-                            ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
+        return this.sectionHtml('obligations', `📋 Today's Obligations
+                    ${obligations.length > 0 ? `<span class="completion-badge ${allDone ? 'complete' : ''}">${completed}/${obligations.length}</span>` : ''}`, `
+            <div class="obligations-list" id="dash-obligations-list">
+                ${obligations.length === 0 ? '<p class="empty-text">No obligations for today yet</p>' : visible.map(({ o, i }) => `
+                    <div class="obligation-card ${o.completed ? 'completed' : ''}" data-sort-index="${i}">
+                        <span class="drag-handle" title="Drag to reorder">⋮⋮</span>
+                        <div class="obligation-checkbox">
+                            <input type="checkbox" id="dash-ob-${i}"
+                                ${o.completed ? 'checked' : ''}
+                                onchange="App.toggleObligation(${i}); Dashboard.render();">
+                            <label for="dash-ob-${i}"></label>
                         </div>
-                    `).join('')}
-                </div>
-                <form class="add-obligation" onsubmit="Dashboard.addObligation(event)">
-                    <input type="text" id="new-obligation-title" class="input-text" placeholder="Add an obligation for today...">
-                    <input type="time" id="new-obligation-time" class="input-time" title="Time (optional)">
-                    <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
-                </form>
-                <div class="today-card-footer">
-                    <a href="#" onclick="App.showView('obligations'); return false;">View all →</a>
-                </div>
+                        <div class="obligation-content">
+                            <span class="obligation-title">${Utils.escapeHtml(o.title)}</span>
+                            ${o.time ? `<span class="obligation-time">${Utils.escapeHtml(o.time)}</span>` : ''}
+                        </div>
+                        ${o.completed ? '<div class="completion-badge">✓</div>' : ''}
+                    </div>
+                `).join('')}
             </div>
-        `;
+            ${moreHtml}
+            <form class="add-obligation" onsubmit="Dashboard.addObligation(event)">
+                <input type="text" id="new-obligation-title" class="input-text" placeholder="Add an obligation for today...">
+                <input type="time" id="new-obligation-time" class="input-time" title="Time (optional)">
+                <button type="submit" class="btn btn-secondary btn-sm">+ Add</button>
+            </form>
+            <div class="today-card-footer">
+                <a href="#" onclick="App.showView('obligations'); return false;">View all →</a>
+            </div>
+        `);
     },
 
     /** Add an obligation to today's list (at the bottom) from the dashboard. */
@@ -246,24 +306,22 @@ const Dashboard = {
     },
 
     renderTodayPriorities() {
+        if (!this.isSectionVisible('priorities')) return '';
         const today = Utils.getLogDateString();
         const commitment = StorageManager.getCommitments(today);
         const priorities = commitment?.priorities || [];
         if (priorities.length === 0) return '';
-        return `
-            <div class="dashboard-section">
-                <h2>🎯 Today's Priorities</h2>
-                <div class="priorities-summary">
-                    ${priorities.map(p => `
-                        <div class="priority-item">
-                            <span class="priority-level ${p.priority}">${p.priority}</span>
-                            <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
-                            ${p.rating ? `<span class="priority-rating">${'⭐'.repeat(p.rating)}</span>` : ''}
-                        </div>
-                    `).join('')}
-                </div>
+        return this.sectionHtml('priorities', "🎯 Today's Priorities", `
+            <div class="priorities-summary">
+                ${priorities.map(p => `
+                    <div class="priority-item">
+                        <span class="priority-level ${p.priority}">${p.priority}</span>
+                        <span class="priority-title">${Utils.escapeHtml(p.title)}</span>
+                        ${p.rating ? `<span class="priority-rating">${'⭐'.repeat(p.rating)}</span>` : ''}
+                    </div>
+                `).join('')}
             </div>
-        `;
+        `);
     },
 
     /**
@@ -283,92 +341,88 @@ const Dashboard = {
      * Render tasks section — all incomplete tasks, overdue first, then by
      * priority (high→low), then by soonest due date within each tier.
      */
-    renderTasksCard() {
+    renderTasksSection() {
+        if (!this.isSectionVisible('tasks')) return '';
         const tasks = TaskManager.getAllIncompleteSorted();
         const today = Utils.getLogDateString();
+        const { visible, moreHtml } = this.previewItems('tasks', tasks);
 
-        return `
+        return this.sectionHtml('tasks', `✓ Tasks <span class="badge">${tasks.length}</span>`, `
             <div class="today-card">
-                <div class="today-card-header">
-                    <h3>✓ Tasks</h3>
-                    <span class="badge">${tasks.length}</span>
-                </div>
-                <div class="today-card-body">
-                    ${tasks.length > 0 ? `
-                        <ul class="quick-list">
-                            ${tasks.slice(0, 5).map(task => {
-                                const overdue = task.dueDate && task.dueDate < today;
-                                return `
-                                    <li class="${overdue ? 'overdue' : ''}">
-                                        <input type="checkbox"
-                                               onchange="TaskManager.toggleTask('${task.id}'); Dashboard.render();">
-                                        <span class="task-priority-dot priority-${task.priority}"></span>
-                                        <span>${Utils.escapeHtml(task.title)}</span>
-                                        ${overdue ? '<span class="overdue-tag">overdue</span>' : ''}
-                                    </li>
-                                `;
-                            }).join('')}
-                        </ul>
-                        ${tasks.length > 5 ? `<p class="more-text">+${tasks.length - 5} more</p>` : ''}
-                    ` : '<p class="empty-text">No tasks pending</p>'}
-                </div>
-                <div class="today-card-footer">
-                    <a href="#" onclick="App.showView('tasks'); return false;">View all →</a>
-                </div>
+            <div class="today-card-body">
+            ${tasks.length > 0 ? `
+                <ul class="quick-list">
+                    ${visible.map(task => {
+                        const overdue = task.dueDate && task.dueDate < today;
+                        return `
+                            <li class="${overdue ? 'overdue' : ''}">
+                                <input type="checkbox"
+                                       onchange="TaskManager.toggleTask('${task.id}'); Dashboard.render();">
+                                <span class="task-priority-dot priority-${task.priority}"></span>
+                                <span>${Utils.escapeHtml(task.title)}</span>
+                                ${overdue ? '<span class="overdue-tag">overdue</span>' : ''}
+                            </li>
+                        `;
+                    }).join('')}
+                </ul>
+                ${moreHtml}
+            ` : '<p class="empty-text">No tasks pending</p>'}
             </div>
-        `;
+            <div class="today-card-footer">
+                <a href="#" onclick="App.showView('tasks'); return false;">View all →</a>
+            </div>
+            </div>
+        `);
     },
 
     /**
      * Render today's habits section
      */
-    renderTodayHabits(habitStats) {
+    renderHabitsSection(habitStats) {
+        if (!this.isSectionVisible('habits')) return '';
         const todayHabits = HabitManager.getTodayHabits();
         const today = Utils.getLogDateString();
+        const { visible, moreHtml } = this.previewItems('habits', todayHabits);
 
-        return `
+        return this.sectionHtml('habits', `🔄 Habits <span class="badge">${habitStats.todayCompleted}/${habitStats.todayTotal}</span>`, `
             <div class="today-card">
-                <div class="today-card-header">
-                    <h3>🔄 Habits</h3>
-                    <span class="badge">${habitStats.todayCompleted}/${habitStats.todayTotal}</span>
+            <div class="today-card-body">
+            ${todayHabits.length > 0 ? `
+                <ul class="quick-list">
+                    ${visible.map(habit => {
+                        const completed = HabitManager.isCompleted(habit.id, today);
+                        let suffix = '';
+                        if (HabitManager.isSubdivided(habit)) {
+                            const doneCount = HabitManager.getSubSlots(habit, today).filter(Boolean).length;
+                            suffix = ` (${doneCount}/${habit.subCount})`;
+                        } else if (habit.frequency === 'weekly-count') {
+                            const weekKey = CommitmentTracker.getWeekKey(new Date(today + 'T12:00:00'));
+                            const count = HabitManager.countCompletionsInWeek(habit, weekKey);
+                            suffix = ` (${count}/${habit.weeklyTarget} this wk)`;
+                        }
+                        return `
+                            <li class="${completed ? 'completed' : ''}">
+                                <input type="checkbox"
+                                       ${completed ? 'checked' : ''}
+                                       onchange="HabitManager.toggleNextSlot('${habit.id}'); Dashboard.render();">
+                                <span>${Utils.escapeHtml(habit.name)}${suffix}</span>
+                            </li>
+                        `;
+                    }).join('')}
+                </ul>
+                ${moreHtml}
+            ` : '<p class="empty-text">No habits for today</p>'}
+            ${habitStats.completionRate > 0 ? `
+                <div class="progress-bar-small">
+                    <div class="progress-fill" style="width: ${habitStats.completionRate}%"></div>
                 </div>
-                <div class="today-card-body">
-                    ${todayHabits.length > 0 ? `
-                        <ul class="quick-list">
-                            ${todayHabits.slice(0, 5).map(habit => {
-                                const completed = HabitManager.isCompleted(habit.id, today);
-                                let suffix = '';
-                                if (HabitManager.isSubdivided(habit)) {
-                                    const doneCount = HabitManager.getSubSlots(habit, today).filter(Boolean).length;
-                                    suffix = ` (${doneCount}/${habit.subCount})`;
-                                } else if (habit.frequency === 'weekly-count') {
-                                    const weekKey = CommitmentTracker.getWeekKey(new Date(today + 'T12:00:00'));
-                                    const count = HabitManager.countCompletionsInWeek(habit, weekKey);
-                                    suffix = ` (${count}/${habit.weeklyTarget} this wk)`;
-                                }
-                                return `
-                                    <li class="${completed ? 'completed' : ''}">
-                                        <input type="checkbox"
-                                               ${completed ? 'checked' : ''}
-                                               onchange="HabitManager.toggleNextSlot('${habit.id}'); Dashboard.render();">
-                                        <span>${Utils.escapeHtml(habit.name)}${suffix}</span>
-                                    </li>
-                                `;
-                            }).join('')}
-                        </ul>
-                        ${todayHabits.length > 5 ? `<p class="more-text">+${todayHabits.length - 5} more</p>` : ''}
-                    ` : '<p class="empty-text">No habits for today</p>'}
-                    ${habitStats.completionRate > 0 ? `
-                        <div class="progress-bar-small">
-                            <div class="progress-fill" style="width: ${habitStats.completionRate}%"></div>
-                        </div>
-                    ` : ''}
-                </div>
-                <div class="today-card-footer">
-                    <a href="#" onclick="App.showView('habits'); return false;">View all →</a>
-                </div>
+            ` : ''}
             </div>
-        `;
+            <div class="today-card-footer">
+                <a href="#" onclick="App.showView('habits'); return false;">View all →</a>
+            </div>
+            </div>
+        `);
     },
 
     /**
@@ -418,9 +472,10 @@ const Dashboard = {
             return '<p class="empty-text">No recent activity</p>';
         }
 
+        const { visible, moreHtml } = this.previewItems('activity', activities.slice(0, 10));
         return `
             <ul class="activity-list">
-                ${activities.slice(0, 10).map(activity => `
+                ${visible.map(activity => `
                     <li class="activity-item">
                         <span class="activity-icon">${activity.icon}</span>
                         <span class="activity-text">${Utils.escapeHtml(activity.text)}</span>
@@ -428,6 +483,7 @@ const Dashboard = {
                     </li>
                 `).join('')}
             </ul>
+            ${moreHtml}
         `;
     },
 
@@ -435,40 +491,38 @@ const Dashboard = {
      * Render tomorrow's commitments
      */
     renderTomorrowCommitments(commitment) {
+        if (!this.isSectionVisible('tomorrow')) return '';
         if (!commitment.wakeup?.commitment) return '';
 
-        return `
-            <div class="dashboard-section commitment-preview">
-                <h2>🌙 Tomorrow's Commitments</h2>
-                <div class="commitment-summary">
+        return this.sectionHtml('tomorrow', "🌙 Tomorrow's Commitments", `
+            <div class="commitment-summary">
+                <div class="commitment-item">
+                    <span class="commitment-icon">⏰</span>
+                    <div class="commitment-details">
+                        <div class="commitment-label">Wake up at</div>
+                        <div class="commitment-value">${Utils.formatTimeString(commitment.wakeup.commitment)}</div>
+                    </div>
+                </div>
+                ${commitment.bedtime?.commitment ? `
                     <div class="commitment-item">
-                        <span class="commitment-icon">⏰</span>
+                        <span class="commitment-icon">🛏️</span>
                         <div class="commitment-details">
-                            <div class="commitment-label">Wake up at</div>
-                            <div class="commitment-value">${Utils.formatTimeString(commitment.wakeup.commitment)}</div>
+                            <div class="commitment-label">Bedtime</div>
+                            <div class="commitment-value">${Utils.formatTimeString(commitment.bedtime.commitment)}</div>
                         </div>
                     </div>
-                    ${commitment.bedtime?.commitment ? `
-                        <div class="commitment-item">
-                            <span class="commitment-icon">🛏️</span>
-                            <div class="commitment-details">
-                                <div class="commitment-label">Bedtime</div>
-                                <div class="commitment-value">${Utils.formatTimeString(commitment.bedtime.commitment)}</div>
-                            </div>
+                ` : ''}
+                ${commitment.obligations?.length > 0 ? `
+                    <div class="commitment-item">
+                        <span class="commitment-icon">📋</span>
+                        <div class="commitment-details">
+                            <div class="commitment-label">Obligations</div>
+                            <div class="commitment-value">${commitment.obligations.length} scheduled</div>
                         </div>
-                    ` : ''}
-                    ${commitment.obligations?.length > 0 ? `
-                        <div class="commitment-item">
-                            <span class="commitment-icon">📋</span>
-                            <div class="commitment-details">
-                                <div class="commitment-label">Obligations</div>
-                                <div class="commitment-value">${commitment.obligations.length} scheduled</div>
-                            </div>
-                        </div>
-                    ` : ''}
-                </div>
+                    </div>
+                ` : ''}
             </div>
-        `;
+        `, 'commitment-preview');
     },
 
     /**
